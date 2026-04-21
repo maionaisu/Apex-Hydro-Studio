@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+    <style> 
+        body { margin: 0; padding: 0; background: #030712; overflow: hidden; } 
+        #map { width: 100vw; height: 100vh; } 
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script>
+        var map = L.map('map', { zoomControl: false }).setView([-8.442, 112.666], 10);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }).addTo(map);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        var drawnItems = new L.FeatureGroup(); 
+        map.addLayer(drawnItems);
+        var isPostProc = __IS_POSTPROC__;
+        if (!isPostProc) {
+            var drawControl = new L.Control.Draw({ edit: { featureGroup: drawnItems }, draw: { __DRAW_OPTS__, circle: false, marker: false, circlemarker: false } });
+            map.addControl(drawControl);
+        }
+        
+        var pyBridge = null; 
+        var initBridge = setInterval(function() {
+            if (typeof qt !== 'undefined' && qt.webChannelTransport) {
+                new QWebChannel(qt.webChannelTransport, function(channel) { 
+                    pyBridge = channel.objects.bridge; 
+                    clearInterval(initBridge);
+                });
+            }
+        }, 100);
+        
+        map.on(L.Draw.Event.CREATED, function (event) {
+            var layer = event.layer; 
+            var type = event.layerType; 
+            drawnItems.addLayer(layer);
+            if (pyBridge) {
+                if (type === 'rectangle' || type === 'polygon') {
+                    var bounds = layer.getBounds();
+                    pyBridge.receive_bbox(JSON.stringify({N: bounds.getNorth(), S: bounds.getSouth(), E: bounds.getEast(), W: bounds.getWest()}));
+                } else if (type === 'polyline') {
+                    var coords = layer.getLatLngs().map(ll => [ll.lat, ll.lng]);
+                    pyBridge.receive_transect(JSON.stringify(coords));
+                }
+            }
+        });
+        
+        function clearMap() { drawnItems.clearLayers(); }
+        function addGeoJSON(geojsonData, color) { 
+            var layer = L.geoJSON(geojsonData, { style: function(f) { return {color: color, weight: 3}; } });
+            layer.eachLayer(function(l) {
+                drawnItems.addLayer(l);
+            });
+            map.fitBounds(drawnItems.getBounds()); 
+        }
+    </script>
+</body>
+</html>
