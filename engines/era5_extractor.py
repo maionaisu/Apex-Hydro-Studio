@@ -57,4 +57,5 @@ class ERA5Extractor:
             # 3. Strict Error Propagation
             error_msg = f"[FATAL] ERA5 Extraction failed: {str(e)}\n{traceback.format_exc()}"
             logger.error(error_msg)
-            raise RuntimeError(f"Failed to extract ERA5 parameters. See logs for details. Error: {str(e)}")
+            # Menambahkan 'from e' (Exception Chaining) agar jejak error asli tidak hilang
+            raise RuntimeError(f"Failed to extract ERA5 parameters. See logs for details. Error: {str(e)}") from e
