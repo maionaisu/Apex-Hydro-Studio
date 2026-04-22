@@ -240,8 +240,16 @@ class Modul1ERA5(QWidget):
         self.inp_man_tp = QLineEdit()
         self.inp_man_dir = QLineEdit()
         self.inp_man_hs.setPlaceholderText("Hs (m)")
+        self.inp_man_hs.setToolTip("Significant Wave Height (Hs) in meters")
+        self.inp_man_hs.setAccessibleName("Significant Wave Height Input")
+
         self.inp_man_tp.setPlaceholderText("Tp (s)")
+        self.inp_man_tp.setToolTip("Peak Wave Period (Tp) in seconds")
+        self.inp_man_tp.setAccessibleName("Peak Wave Period Input")
+
         self.inp_man_dir.setPlaceholderText("Dir (°)")
+        self.inp_man_dir.setToolTip("Mean Wave Direction (Dir) in degrees")
+        self.inp_man_dir.setAccessibleName("Mean Wave Direction Input")
         
         h_man = QHBoxLayout()
         h_man.addWidget(self.inp_man_hs)
