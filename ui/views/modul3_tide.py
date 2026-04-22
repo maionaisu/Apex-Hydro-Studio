@@ -111,11 +111,16 @@ class Modul3Tide(QWidget):
         if not p: return
         
         try:
-            # Detect metadata headers by checking row logic from monolithic legacy
-            with open(p, 'r', errors='ignore') as f: 
-                lines = f.readlines()
-                
-            skip = next((i for i, l in enumerate(lines[:50]) if any(k in l.lower() for k in ['z(m)','rad1','water', 'date', 'time'])), 0)
+            # Detect metadata headers by lazily checking row logic
+            with open(p, 'r', errors='ignore') as f:
+                skip = 0
+                for i, l in enumerate(f):
+                    if i >= 50:
+                        break
+                    if any(k in l.lower() for k in ['z(m)', 'rad1', 'water', 'date', 'time']):
+                        skip = i
+                        break
+
             self.tide_df = pd.read_csv(p, skiprows=skip, sep=r'\s{2,}|\t' if p.endswith('.txt') else ',', engine='python')
             
             cols = list(self.tide_df.columns)
