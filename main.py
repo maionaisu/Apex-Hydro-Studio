@@ -173,7 +173,21 @@ class ApexHydroStudioApp(QMainWindow):
         h_logo.addWidget(lbl_title)
         h_logo.addStretch()
         side_layout.addLayout(h_logo)
-        side_layout.addSpacing(30)
+        
+        # [NEW INJECTION]: HPC Compute Backend Selector
+        self.cmb_backend = QComboBox()
+        self.cmb_backend.addItems(["🖥️ CPU (Numba LLVM)", "🚀 CUDA (GPU Only)", "🔥 HYBRID (CPU+GPU)"])
+        self.cmb_backend.setStyleSheet("""
+            QComboBox { background-color: #0F172A; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px; color: #38BDF8; font-size: 11px; font-weight: bold; margin-top: 10px; }
+            QComboBox::drop-down { border: none; width: 20px; }
+            QComboBox QAbstractItemView { background-color: #1E293B; color: #F8FAFC; selection-background-color: #0284C7; border: 1px solid #475569; border-radius: 6px; }
+        """)
+        self.cmb_backend.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        # Ekstrak kata "CPU", "CUDA", atau "HYBRID" dari teks dropdown dan simpan ke Global State
+        self.cmb_backend.currentTextChanged.connect(lambda t: app_state.update('compute_backend', t.split(" ")[1]))
+        side_layout.addWidget(self.cmb_backend)
+        
+        side_layout.addSpacing(20)
 
         # Navigation Buttons (Revolut Styled)
         self.nav_btns = []
