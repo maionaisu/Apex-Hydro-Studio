@@ -174,6 +174,10 @@ pyinstaller_args = [
     '--hidden-import=utils.config',
     '--hidden-import=utils.math_accel',
 
+    # [NEW]: Memasukkan pustaka GPU CUDA
+    '--hidden-import=cupy',
+    '--hidden-import=cupyx',
+
     '--clean',
     '--workpath=./build_temp',
     '--distpath=./dist',
