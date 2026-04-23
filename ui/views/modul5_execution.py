@@ -163,6 +163,8 @@ class Modul5Execution(QWidget):
         
         btn_browse = QPushButton("📂 Telusuri (.bat)")
         btn_browse.setObjectName("OutlineBtn")
+        btn_browse.setToolTip("Cari file run_dimr.bat di dalam folder instalasi Deltares.")
+        btn_browse.setAccessibleName("Telusuri file bat")
         btn_browse.clicked.connect(self.browse_bat)
         
         h_file.addWidget(self.inp_bat, stretch=8)
@@ -180,11 +182,15 @@ class Modul5Execution(QWidget):
         
         self.btn_run = QPushButton("▶ RUN ENGINE (MDU + SWAN)")
         self.btn_run.setObjectName("GreenBtn")
+        self.btn_run.setToolTip("Mulai eksekusi DIMR Engine (MDU + SWAN)")
+        self.btn_run.setAccessibleName("Jalankan Engine MDU dan SWAN")
         self.btn_run.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_run.clicked.connect(self.start_engine)
         
         self.btn_stop = QPushButton("⏹ ABORT FORCE KILL")
         self.btn_stop.setObjectName("DangerBtn") 
+        self.btn_stop.setToolTip("Hentikan paksa proses engine yang sedang berjalan")
+        self.btn_stop.setAccessibleName("Hentikan paksa engine")
         self.btn_stop.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_stop.clicked.connect(self.abort_engine)
         self.btn_stop.setEnabled(False)
