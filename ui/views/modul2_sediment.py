@@ -16,14 +16,15 @@ from core.state_manager import app_state
 
 logger = logging.getLogger(__name__)
 
-# --- ENTERPRISE QSS STYLESHEETS (REVOLUT / GRADIENTA INFLUENCE) ---
+# --- ENTERPRISE QSS STYLESHEETS (THE "GOLDEN" CSS FIX) ---
+# Gunakan blok CSS ini untuk disalin ke modul-modul lain jika Anda ingin!
 STYLE_GROUPBOX = """
     QGroupBox {
         background-color: #1E293B;
         border: 1px solid #334155;
         border-radius: 12px;
-        margin-top: 24px;
-        padding-top: 15px;
+        margin-top: 10px;
+        padding-top: 40px; /* Space lapang agar title duduk manis di dalam */
         font-weight: bold;
         color: #F1F5F9;
         font-size: 14px;
@@ -31,12 +32,12 @@ STYLE_GROUPBOX = """
     QGroupBox::title {
         subcontrol-origin: margin;
         subcontrol-position: top left;
-        padding: 0 10px;
+        padding: 6px 15px;
         background-color: #0F172A;
-        border-radius: 6px;
+        border-radius: 8px;
         color: #F59E0B;
-        top: -12px;
-        left: 15px;
+        top: 10px; /* Positif! Judul masuk ke dalam kotak, dijamin TIDAK TERPOTONG */
+        left: 12px;
     }
 """
 
@@ -45,9 +46,10 @@ STYLE_INPUTS = """
         background-color: #0F172A;
         border: 1px solid #475569;
         border-radius: 6px;
-        padding: 8px 12px;
+        padding: 10px 14px; /* Ditebalkan agar elegan */
         color: #F8FAFC;
         font-size: 13px;
+        min-width: 150px;
     }
     QComboBox:focus { border: 1px solid #F59E0B; }
     QComboBox::drop-down { border: none; }
@@ -58,7 +60,7 @@ STYLE_INPUTS = """
         border: 1px solid #475569;
         border-radius: 6px;
     }
-    QCheckBox { color: #CBD5E1; font-size: 13px; }
+    QCheckBox { color: #CBD5E1; font-size: 13px; font-weight: bold; }
     QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #475569; background: #0F172A; }
     QCheckBox::indicator:checked { background: #F59E0B; border: 1px solid #D97706; }
 """
@@ -69,7 +71,7 @@ STYLE_BTN_PRIMARY = """
         color: #022C22;
         border: none;
         border-radius: 8px;
-        padding: 10px 16px;
+        padding: 12px 16px;
         font-weight: bold;
         font-size: 14px;
     }
@@ -84,7 +86,7 @@ STYLE_BTN_OUTLINE = """
         color: #F8FAFC;
         border: 1px solid #64748B;
         border-radius: 8px;
-        padding: 10px 16px;
+        padding: 12px 16px;
         font-weight: bold;
     }
     QPushButton:hover { background-color: #334155; border-color: #F59E0B; color: #F59E0B; }
@@ -116,47 +118,47 @@ class Modul2Sediment(QWidget):
         head.addWidget(d)
         main_layout.addLayout(head)
 
+        # UI BUG FIX: Splitter Transparan Tanpa Batas Garis Tebal
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
         splitter.setStyleSheet("""
-            QSplitter::handle { background-color: #334155; height: 2px; margin: 4px 0px; }
+            QSplitter::handle { background-color: transparent; height: 10px; }
         """)
 
-        # --- 1. TOP WIDGET (VISUALIZATION) ---
-        self.lbl_sed_viz = QLabel("Plot Spasial (Heatmap) akan muncul di sini.")
+        # --- 1. TOP WIDGET (VISUALIZATION - MASSIVE SIZE) ---
+        self.lbl_sed_viz = QLabel("Plot Spasial (Heatmap) akan di-render dalam mode resolusi tinggi di sini.")
         self.lbl_sed_viz.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_sed_viz.setStyleSheet("border: 1px dashed #475569; background-color:#020617; border-radius: 8px; color: #64748B; font-weight: bold;")
+        self.lbl_sed_viz.setStyleSheet("border: 2px dashed #334155; background-color:#020617; border-radius: 12px; color: #64748B; font-weight: bold; font-size: 16px;")
         
         top_wrap = QFrame()
-        top_wrap.setStyleSheet("border: 1px solid #1E293B; border-radius: 12px; background: #000;")
+        top_wrap.setStyleSheet("border: none; background: transparent;")
         tl = QVBoxLayout(top_wrap)
-        tl.setContentsMargins(1, 1, 1, 1)
+        tl.setContentsMargins(0, 0, 0, 0)
         tl.addWidget(self.lbl_sed_viz)
         splitter.addWidget(top_wrap)
 
         # --- 2. MIDDLE WIDGET (CONTROLS TABS) ---
         self.tabs = QTabWidget()
-        self.tabs.setMaximumHeight(350)
         self.tabs.setStyleSheet("""
-            QTabWidget::pane { border: 1px solid #334155; border-radius: 8px; background: #1E293B; }
-            QTabBar::tab { background: #0F172A; color: #94A3B8; padding: 10px 16px; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px;}
-            QTabBar::tab:selected { background: #1E293B; color: #F59E0B; font-weight: bold; border-bottom: 2px solid #F59E0B;}
+            QTabWidget::pane { border: 1px solid #334155; border-radius: 12px; background: #1E293B; }
+            QTabBar::tab { background: #0F172A; color: #94A3B8; padding: 12px 20px; border-top-left-radius: 8px; border-top-right-radius: 8px; margin-right: 4px; font-weight: bold;}
+            QTabBar::tab:selected { background: #1E293B; color: #F59E0B; border-bottom: 3px solid #F59E0B;}
         """)
         
         # Panel 1: Sediment Dasar
         self.tab_sediment = QWidget()
-        self.build_tab_ui(self.tab_sediment, 'sediment', "📂 Load Spasial Sedimen Dasar Laut (.csv/.xlsx)", True)
-        self.tabs.addTab(self.tab_sediment, "1. Sedimen Dasar (Manning/Nikuradse)")
+        self.build_tab_ui(self.tab_sediment, 'sediment', "📂 Load Survei Sedimen (.csv/.xlsx)", True)
+        self.tabs.addTab(self.tab_sediment, "1. Sedimen (Nikuradse)")
 
         # Panel 2: Mangrove (Baptist)
         self.tab_mangrove = QWidget()
-        self.build_tab_ui(self.tab_mangrove, 'mangrove', "🌲 Load Node Vegetasi Mangrove (.csv/.xlsx)", False)
-        self.tabs.addTab(self.tab_mangrove, "2. Mangrove (Trachytope Baptist)")
+        self.build_tab_ui(self.tab_mangrove, 'mangrove', "🌲 Load Vegetasi Mangrove (.csv/.xlsx)", False)
+        self.tabs.addTab(self.tab_mangrove, "2. Mangrove (Trachytope)")
 
         # Panel 3: Submerged Vegetation
         self.tab_submerged = QWidget()
-        self.build_tab_ui(self.tab_submerged, 'submerged', "🪸 Load Survei Ekosistem Bawah Laut (.csv/.xlsx)", False)
-        self.tabs.addTab(self.tab_submerged, "3. Ekosistem (Karang/Lamun)")
+        self.build_tab_ui(self.tab_submerged, 'submerged', "🪸 Load Terumbu Karang/Lamun (.csv/.xlsx)", False)
+        self.tabs.addTab(self.tab_submerged, "3. Submerged Ecosystem")
 
         splitter.addWidget(self.tabs)
 
@@ -165,20 +167,21 @@ class Modul2Sediment(QWidget):
         bl = QVBoxLayout(bot_wrap)
         bl.setContentsMargins(0, 10, 0, 0)
         
-        term_lbl = QLabel("Terminal Interpolasi (System Log):")
+        term_lbl = QLabel("Terminal Spasial (System Log):")
         term_lbl.setStyleSheet("font-weight:900; color:#38BDF8; font-size: 14px;")
         bl.addWidget(term_lbl)
         
         self.log_sed = QTextEdit()
         self.log_sed.setReadOnly(True)
-        self.log_sed.setStyleSheet("background-color: #020617; color: #10B981; font-family: Consolas, monospace; font-size: 12px; border: 1px solid #1E293B; border-radius: 6px; padding: 8px;")
+        self.log_sed.setStyleSheet("background-color: #020617; color: #10B981; font-family: Consolas, monospace; font-size: 12px; border: 1px solid #1E293B; border-radius: 8px; padding: 10px;")
         bl.addWidget(self.log_sed)
         
         splitter.addWidget(bot_wrap)
-        splitter.setSizes([400, 300, 200])
+        
+        # UI BUG FIX: Memberikan 60% proporsi layar murni untuk gambar Heatmap
+        splitter.setSizes([600, 300, 100])
         main_layout.addWidget(splitter)
         
-        # Data State Store untuk masing-masing tab
         self.tab_data = {
             'sediment': {'df': None},
             'mangrove': {'df': None},
@@ -187,14 +190,14 @@ class Modul2Sediment(QWidget):
 
     def build_tab_ui(self, parent_widget: QWidget, mode_type: str, btn_text: str, show_ks: bool) -> None:
         layout = QHBoxLayout(parent_widget)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(20)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(25)
         
         # Col 1: Dataset Loader
         c1 = QVBoxLayout()
-        grp1 = QGroupBox("A. Dataset Survei")
+        grp1 = QGroupBox("A. Dataset Survei Lapangan")
         g1 = QVBoxLayout(grp1)
-        g1.setSpacing(12)
+        g1.setSpacing(15)
         
         btn_load = QPushButton(btn_text)
         if mode_type == 'mangrove': btn_load.setObjectName("GreenBtn")
@@ -204,8 +207,8 @@ class Modul2Sediment(QWidget):
         btn_load.clicked.connect(lambda checked, m=mode_type: self.load_file(m))
         g1.addWidget(btn_load)
         
-        lbl_info = QLabel("Pilih file CSV atau Excel yang mengandung kolom koordinat X (Longitude), Y (Latitude), dan nilai densitas/D50.")
-        lbl_info.setStyleSheet("color: #64748B; font-size: 12px;")
+        lbl_info = QLabel("Format: Tabel dengan X (Longitude), Y (Latitude), dan Kolom Target (Z / D50 / Densitas).")
+        lbl_info.setStyleSheet("color: #94A3B8; font-size: 13px; line-height: 1.4;")
         lbl_info.setWordWrap(True)
         g1.addWidget(lbl_info)
         g1.addStretch()
@@ -215,26 +218,36 @@ class Modul2Sediment(QWidget):
         
         # Col 2: Mapper Configuration
         c2 = QVBoxLayout()
-        grp2 = QGroupBox("B. Konfigurasi Pemetaan Spasial")
+        grp2 = QGroupBox("B. Pemetaan Spasial Delaunay")
+        
+        # UI BUG FIX: Merenggangkan Form Layout agar teks "Kolom X" bernapas lega
         g2 = QFormLayout(grp2)
-        g2.setSpacing(14)
+        g2.setHorizontalSpacing(20) # Jarak antara teks Label dan ComboBox
+        g2.setVerticalSpacing(16)   # Jarak antar baris (Atas-Bawah)
+        
+        # Injeksi Style Label Lokal Khusus untuk Form ini
+        label_style = "QLabel { color: #CBD5E1; font-weight: bold; font-size: 13px; }"
         
         cmb_x = QComboBox()
         cmb_y = QComboBox()
         cmb_val = QComboBox()
         
-        g2.addRow("Kolom X (Lon):", cmb_x)
-        g2.addRow("Kolom Y (Lat):", cmb_y)
-        g2.addRow("Kolom Target:", cmb_val)
+        l_x = QLabel("Kolom X (Lon):"); l_x.setStyleSheet(label_style)
+        l_y = QLabel("Kolom Y (Lat):"); l_y.setStyleSheet(label_style)
+        l_z = QLabel("Kolom Target:"); l_z.setStyleSheet(label_style)
         
-        chk_ks = QCheckBox("Transformasi D50 ke Nikuradse (ks = 2.5D)")
+        g2.addRow(l_x, cmb_x)
+        g2.addRow(l_y, cmb_y)
+        g2.addRow(l_z, cmb_val)
+        
+        chk_ks = QCheckBox("Transformasi Otomatis D50 -> Nikuradse (ks = 2.5D)")
         if show_ks:
             chk_ks.setChecked(True)
             g2.addRow("", chk_ks)
         else:
             chk_ks.setVisible(False)
             
-        btn_run = QPushButton("⚡ Eksekusi Interpolasi Delaunay & Heatmap")
+        btn_run = QPushButton("⚡ Eksekusi Grid Spasial & Render Heatmap")
         btn_run.setObjectName("ExecuteBtn")
         btn_run.clicked.connect(lambda checked, m=mode_type: self.run_interpolation(m))
         g2.addRow(btn_run)
@@ -242,7 +255,6 @@ class Modul2Sediment(QWidget):
         c2.addWidget(grp2)
         layout.addLayout(c2, stretch=6)
         
-        # Dinamis Atribut Mapping (Menyimpan referensi QComboBox agar mudah ditarik di run_interpolation)
         setattr(self, f"cmb_x_{mode_type}", cmb_x)
         setattr(self, f"cmb_y_{mode_type}", cmb_y)
         setattr(self, f"cmb_v_{mode_type}", cmb_val)
@@ -254,7 +266,6 @@ class Modul2Sediment(QWidget):
         if not p: return
         
         try:
-            # Membaca data ke RAM. (Operasi I/O ringan, cukup aman di Main Thread)
             df = pd.read_excel(p) if p.endswith('.xlsx') else pd.read_csv(p)
             self.tab_data[mode_type]['df'] = df
             cols = list(df.columns)
@@ -271,7 +282,6 @@ class Modul2Sediment(QWidget):
             cmb_y.addItems(cols)
             cmb_v.addItems(cols)
             
-            # Smart Auto-select berdasar heuristik nama kolom
             for c in cols:
                 cl = str(c).lower()
                 if 'lon' in cl or 'x' in cl or 'easting' in cl: cmb_x.setCurrentText(c)
@@ -287,14 +297,12 @@ class Modul2Sediment(QWidget):
             QMessageBox.critical(self, "I/O Error", f"Gagal membaca file spreadsheet: {str(e)}")
 
     def run_interpolation(self, mode_type: str) -> None:
-        # 1. Thread Concurrency Guard (Seksi 5.B Requirement)
         if hasattr(self, 'sed_w') and self.sed_w.isRunning():
             QMessageBox.warning(self, "Konflik", "Proses interpolasi sedang berjalan. Harap tunggu.")
             return
 
         df = self.tab_data[mode_type]['df']
         
-        # 2. Validation Guards
         if df is None:
             QMessageBox.warning(self, "Validasi Gagal", f"Harap muat dataset (.csv/.xlsx) untuk mode '{mode_type}' terlebih dahulu.")
             return
@@ -313,7 +321,6 @@ class Modul2Sediment(QWidget):
             QMessageBox.critical(self, "Validasi Gagal", "Konfigurasi kolom X, Y, dan Target tidak lengkap.")
             return
         
-        # 3. Lock UI and Delegate to Worker
         btn_run.setEnabled(False)
         btn_run.setText("⏳ Sedang Mengekstrak Matriks Spasial...")
         
@@ -327,11 +334,11 @@ class Modul2Sediment(QWidget):
             epsg=app_state.get('EPSG', '32749')
         )
         
-        # 4. Signal Wiring
         self.sed_w.log_signal.connect(self.log_sed.append)
         
         def update_img(img_path: str):
             if img_path and os.path.exists(img_path):
+                # Merender gambar dengan High Quality Smooth Transformation
                 pixmap = QPixmap(img_path).scaled(self.lbl_sed_viz.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                 self.lbl_sed_viz.setPixmap(pixmap)
                 
@@ -339,14 +346,13 @@ class Modul2Sediment(QWidget):
         
         def on_finished(xyz_path: str):
             btn_run.setEnabled(True)
-            btn_run.setText("⚡ Eksekusi Interpolasi Delaunay & Heatmap")
+            btn_run.setText("⚡ Eksekusi Grid Spasial & Render Heatmap")
             
             if xyz_path and os.path.exists(xyz_path):
-                # Lock target friction layer inside global memory state
                 app_state.update('sediment_xyz', xyz_path)
                 self.log_sed.append(f"[STATE] File forcing `.xyz` berhasil dikunci ke Memori Global.")
                 
-            self.sed_w.deleteLater() # Garbage Collection
+            self.sed_w.deleteLater()
             
         self.sed_w.finished_signal.connect(on_finished)
         self.sed_w.start()
