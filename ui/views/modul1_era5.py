@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtCore import Qt, QDateTime, QSettings
+from PyQt6.QtGui import QColor
 
 from ui.components.web_bridge import WebBridge
 from utils.config import get_leaflet_html
@@ -20,15 +21,14 @@ from core.state_manager import app_state
 
 logger = logging.getLogger(__name__)
 
-# --- ENTERPRISE QSS STYLESHEETS (REVOLUT / GRADIENTA INFLUENCE) ---
-# Menggunakan palet Slate gelap, aksen Amber, dan layout membulat (rounded)
+# --- ENTERPRISE QSS STYLESHEETS (THE "GOLDEN" CSS FIX) ---
 STYLE_GROUPBOX = """
     QGroupBox {
         background-color: #1E293B;
         border: 1px solid #334155;
         border-radius: 12px;
-        margin-top: 24px;
-        padding-top: 15px;
+        margin-top: 10px;
+        padding-top: 40px; /* Space lapang agar title duduk manis di dalam */
         font-weight: bold;
         color: #F1F5F9;
         font-size: 14px;
@@ -36,27 +36,69 @@ STYLE_GROUPBOX = """
     QGroupBox::title {
         subcontrol-origin: margin;
         subcontrol-position: top left;
-        padding: 0 10px;
+        padding: 6px 15px;
         background-color: #0F172A;
-        border-radius: 6px;
+        border-radius: 8px;
         color: #F59E0B;
-        top: -12px;
-        left: 15px;
+        top: 10px; /* Positif! Judul masuk ke dalam kotak, dijamin TIDAK TERPOTONG */
+        left: 12px;
     }
 """
 
-STYLE_LINEEDIT = """
+STYLE_INPUTS = """
     QLineEdit, QDateTimeEdit {
         background-color: #0F172A;
         border: 1px solid #475569;
         border-radius: 6px;
-        padding: 8px 12px;
+        padding: 10px 14px; /* Ditebalkan agar elegan */
         color: #F8FAFC;
         font-size: 13px;
         selection-background-color: #F59E0B;
     }
     QLineEdit:focus, QDateTimeEdit:focus {
         border: 1px solid #F59E0B;
+    }
+    QDateTimeEdit::drop-down {
+        border: none;
+        width: 24px;
+    }
+"""
+
+STYLE_TABLE_LIST = """
+    QListWidget { 
+        background-color: #0F172A; 
+        border: 1px solid #475569; 
+        border-radius: 8px; 
+        padding: 8px; 
+        color: #F8FAFC; 
+    }
+    QListWidget::item { 
+        padding: 8px 12px; 
+        border-radius: 6px; 
+        margin-bottom: 4px;
+    }
+    QListWidget::item:hover:!selected { 
+        background-color: #1E293B; 
+    }
+    QListWidget::item:selected { 
+        background-color: #334155; 
+        color: #F59E0B; 
+        border-left: 4px solid #F59E0B; 
+    }
+    
+    QTableWidget { 
+        background-color: #0F172A; 
+        color: #F8FAFC; 
+        gridline-color: #334155; 
+        border: 1px solid #334155; 
+        border-radius: 8px; 
+    }
+    QHeaderView::section { 
+        background-color: #1E293B; 
+        color: #94A3B8; 
+        padding: 6px; 
+        font-weight: bold; 
+        border: 1px solid #334155; 
     }
 """
 
@@ -66,7 +108,7 @@ STYLE_BTN_PRIMARY = """
         color: #022C22;
         border: none;
         border-radius: 8px;
-        padding: 10px 16px;
+        padding: 12px 16px;
         font-weight: bold;
         font-size: 14px;
     }
@@ -88,7 +130,7 @@ STYLE_BTN_OUTLINE = """
         color: #F8FAFC;
         border: 1px solid #64748B;
         border-radius: 8px;
-        padding: 10px 16px;
+        padding: 12px 16px;
         font-weight: bold;
     }
     QPushButton:hover {
@@ -97,6 +139,9 @@ STYLE_BTN_OUTLINE = """
         color: #F59E0B;
     }
 """
+
+# Common Label Style for Forms
+LABEL_STYLE = "QLabel { color: #CBD5E1; font-weight: bold; font-size: 13px; }"
 
 
 class Modul1ERA5(QWidget):
@@ -112,7 +157,7 @@ class Modul1ERA5(QWidget):
         self.setup_ui()
 
     def setup_ui(self) -> None:
-        self.setStyleSheet(f"{STYLE_GROUPBOX} {STYLE_LINEEDIT}")
+        self.setStyleSheet(f"{STYLE_GROUPBOX} {STYLE_INPUTS} {STYLE_TABLE_LIST}")
         
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(24, 24, 24, 24)
@@ -139,7 +184,7 @@ class Modul1ERA5(QWidget):
         tl.setContentsMargins(1, 1, 1, 1) # Margin sangat tipis agar map terlihat menyatu
         
         self.web_map_era5 = QWebEngineView()
-        self.web_map_era5.setMinimumHeight(400)
+        self.web_map_era5.setMinimumHeight(420)
         
         # Inisiasi Komunikasi Jembatan Python-JS yang Aman (Dari File 15)
         self.bridge_era5 = WebBridge()
@@ -155,15 +200,15 @@ class Modul1ERA5(QWidget):
         # KANAN: Panel Tab Input AOI
         self.tabs_aoi = QTabWidget()
         self.tabs_aoi.setStyleSheet("""
-            QTabWidget::pane { border: 1px solid #334155; border-radius: 8px; background: #1E293B; }
-            QTabBar::tab { background: #0F172A; color: #94A3B8; padding: 10px 16px; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px;}
-            QTabBar::tab:selected { background: #1E293B; color: #F59E0B; font-weight: bold; border-bottom: 2px solid #F59E0B;}
+            QTabWidget::pane { border: 1px solid #334155; border-radius: 12px; background: #1E293B; }
+            QTabBar::tab { background: #0F172A; color: #94A3B8; padding: 12px 18px; border-top-left-radius: 8px; border-top-right-radius: 8px; margin-right: 4px; font-weight: bold;}
+            QTabBar::tab:selected { background: #1E293B; color: #F59E0B; border-bottom: 3px solid #F59E0B;}
         """)
         
         # Tab 1: Peta Interaktif
         t1 = QWidget()
         l1 = QVBoxLayout(t1)
-        l1.setContentsMargins(16, 20, 16, 16)
+        l1.setContentsMargins(20, 24, 20, 20)
         lbl_msg = QLabel("💡 Gunakan fitur Draw Rectangle (Kotak) pada toolbar peta di sebelah kiri untuk menggambar area batas ekstraksi ERA5 secara otomatis.")
         lbl_msg.setStyleSheet("color: #CBD5E1; font-size: 13px; line-height: 1.6;")
         lbl_msg.setWordWrap(True)
@@ -175,20 +220,16 @@ class Modul1ERA5(QWidget):
         # Tab 2: Input Manual (Grid WGS84)
         t2 = QWidget()
         l2 = QVBoxLayout(t2)
-        l2.setContentsMargins(16, 16, 16, 16)
+        l2.setContentsMargins(20, 20, 20, 20)
         lbl_aoi = QLabel("Input Koordinat WGS84 (Lat/Lon):")
-        lbl_aoi.setStyleSheet("font-weight: bold; color: #F8FAFC; font-size: 13px;")
+        lbl_aoi.setStyleSheet("font-weight: bold; color: #F8FAFC; font-size: 13px; margin-bottom: 8px;")
         l2.addWidget(lbl_aoi)
         
         self.tbl_bbox = QTableWidget(4, 1)
-        self.tbl_bbox.setStyleSheet("""
-            QTableWidget { background-color: #0F172A; color: #F8FAFC; gridline-color: #334155; border: 1px solid #334155; border-radius: 6px; }
-            QHeaderView::section { background-color: #1E293B; color: #94A3B8; padding: 4px; font-weight: bold; border: 1px solid #334155; }
-        """)
         self.tbl_bbox.setVerticalHeaderLabels(["North", "South", "East", "West"])
         self.tbl_bbox.horizontalHeader().setVisible(False)
         self.tbl_bbox.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.tbl_bbox.setMaximumHeight(160)
+        self.tbl_bbox.setMaximumHeight(170)
         
         for j in range(4): 
             item = QTableWidgetItem("")
@@ -218,7 +259,7 @@ class Modul1ERA5(QWidget):
         scroll_layout.setContentsMargins(0, 10, 0, 0)
         
         ctrl = QHBoxLayout()
-        ctrl.setSpacing(20)
+        ctrl.setSpacing(25)
         
         # KIRI BAWAH: CDS API & List Variabel
         c1 = QVBoxLayout()
@@ -228,7 +269,7 @@ class Modul1ERA5(QWidget):
         g0.setSpacing(12)
         
         self.inp_api = QLineEdit()
-        self.inp_api.setPlaceholderText("UID:API_KEY (e.g., 123456:a1b2c3d4-e5f6-g7h8-i9j0)")
+        self.inp_api.setPlaceholderText("UID:API_KEY (e.g., 123456:a1b2c3d4-e5f6-g7h8)")
         self.inp_api.setToolTip("Dapatkan kunci API ini dari dashboard profil Copernicus Climate Data Store Anda.")
         self.inp_api.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit) # Masking keamanan
         
@@ -239,21 +280,20 @@ class Modul1ERA5(QWidget):
         g0.addWidget(self.inp_api)
         
         self.lbl_era_bbox = QLabel("Batas Spasial (BBox): Belum Ditetapkan")
-        self.lbl_era_bbox.setStyleSheet("color:#EF4444; font-weight:bold; font-size:13px;")
+        self.lbl_era_bbox.setStyleSheet("color:#EF4444; font-weight:bold; font-size:13px; margin-top: 4px;")
         g0.addWidget(self.lbl_era_bbox)
         c1.addWidget(grp0)
         
         grp1 = QGroupBox("2. Parameter & Resolusi Waktu")
+        
+        # UPGRADE: Form Layout yang Lega
         g1 = QFormLayout(grp1)
-        g1.setSpacing(16)
+        g1.setHorizontalSpacing(20)
+        g1.setVerticalSpacing(16)
         
         self.var_list = QListWidget()
         self.var_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
-        self.var_list.setMinimumHeight(180)
-        self.var_list.setStyleSheet("""
-            QListWidget { background-color: #0F172A; border: 1px solid #475569; border-radius: 6px; padding: 5px; color: #F8FAFC; }
-            QListWidget::item:selected { background-color: #334155; color: #F59E0B; border-left: 3px solid #F59E0B; }
-        """)
+        self.var_list.setMinimumHeight(200)
 
         # Katalog ERA5 sesuai spesifikasi Oceanografi
         ERA5_CATALOG = [
@@ -284,15 +324,16 @@ class Modul1ERA5(QWidget):
             if v_id is None:
                 item.setFlags(Qt.ItemFlag.NoItemFlags)
                 item.setForeground(QColor("#64748B"))
-                item.setBackground(QColor("#1E293B"))
+                item.setBackground(QColor("#0F172A")) # Menyesuaikan dengan dark slate
             else:
                 item.setData(Qt.ItemDataRole.UserRole, v_id)
                 if v_id in default_selected:
                     item.setSelected(True)
             self.var_list.addItem(item)
 
-        g1.addRow(QLabel("Katalog Variabel:", styleSheet="color:#94A3B8;")),
-        g1.addRow(self.var_list)
+        lbl_katalog = QLabel("Katalog Variabel:")
+        lbl_katalog.setStyleSheet(LABEL_STYLE)
+        g1.addRow(lbl_katalog, self.var_list)
         
         # Penanggalan dengan pembatas logis
         safe_end_dt = QDateTime.currentDateTime().addDays(-5) # Delay rilisan ERA5
@@ -304,8 +345,13 @@ class Modul1ERA5(QWidget):
         self.dt_end.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.dt_end.setCalendarPopup(True)
         
-        g1.addRow("Tgl Mulai:", self.dt_start)
-        g1.addRow("Tgl Akhir:", self.dt_end)
+        lbl_start = QLabel("Tgl Mulai:")
+        lbl_start.setStyleSheet(LABEL_STYLE)
+        lbl_end = QLabel("Tgl Akhir:")
+        lbl_end.setStyleSheet(LABEL_STYLE)
+        
+        g1.addRow(lbl_start, self.dt_start)
+        g1.addRow(lbl_end, self.dt_end)
         
         self.btn_dl_era5 = QPushButton("↓ Mulai Unduh dari Server Copernicus (.nc)")
         self.btn_dl_era5.setStyleSheet(STYLE_BTN_PRIMARY)
@@ -319,8 +365,11 @@ class Modul1ERA5(QWidget):
         c2 = QVBoxLayout()
         
         grp2 = QGroupBox("3. Ekstraksi Sentral & Manual Override")
+        
+        # UPGRADE: Form Layout yang Lega
         g2 = QFormLayout(grp2)
-        g2.setSpacing(16)
+        g2.setHorizontalSpacing(20)
+        g2.setVerticalSpacing(16)
         
         btn_load = QPushButton("📂 Pilih File .nc Lokal")
         btn_load.setStyleSheet(STYLE_BTN_OUTLINE)
@@ -341,10 +390,14 @@ class Modul1ERA5(QWidget):
         self.inp_man_dir.setPlaceholderText("Dir (°)")
         
         h_man = QHBoxLayout()
+        h_man.setSpacing(10)
         h_man.addWidget(self.inp_man_hs)
         h_man.addWidget(self.inp_man_tp)
         h_man.addWidget(self.inp_man_dir)
-        g2.addRow(QLabel("Atau Injeksi Angka Manual:", styleSheet="color:#94A3B8; font-size:12px; margin-top:10px;"))
+        
+        lbl_or = QLabel("Atau Injeksi Angka Manual:")
+        lbl_or.setStyleSheet("color:#94A3B8; font-size:13px; font-weight:bold; margin-top: 10px; margin-bottom: 4px;")
+        g2.addRow(lbl_or)
         g2.addRow(h_man)
         
         btn_inj = QPushButton("Gunakan Input Manual")
@@ -356,12 +409,12 @@ class Modul1ERA5(QWidget):
         
         # Terminal Sistem
         term_lbl = QLabel("Terminal Proses (System Log):")
-        term_lbl.setStyleSheet("font-weight:900; color:#38BDF8; font-size: 14px; margin-top: 10px;")
+        term_lbl.setStyleSheet("font-weight:900; color:#38BDF8; font-size: 14px; margin-top: 15px; margin-bottom: 5px;")
         c2.addWidget(term_lbl)
         
         self.log_era5 = QTextEdit()
         self.log_era5.setReadOnly(True)
-        self.log_era5.setStyleSheet("background-color: #020617; color: #10B981; font-family: Consolas, monospace; font-size: 12px; border: 1px solid #1E293B; border-radius: 6px; padding: 8px;")
+        self.log_era5.setStyleSheet("background-color: #020617; color: #10B981; font-family: Consolas, monospace; font-size: 12px; border: 1px solid #1E293B; border-radius: 8px; padding: 12px;")
         c2.addWidget(self.log_era5)
         
         ctrl.addLayout(c2, stretch=5)
@@ -378,7 +431,6 @@ class Modul1ERA5(QWidget):
     
     def on_global_state_changed(self, key: str) -> None:
         """Dipanggil otomatis oleh Singleton StateManager jika memori berubah."""
-        # Jika Worker selesai mengkalkulasi DoC, update UI otomatis (Contoh interaktivitas lintas modul)
         if key in ['Hs', 'Tp', 'Dir', 'DoC']:
             hs = app_state.get('Hs', 0)
             tp = app_state.get('Tp', 0)
@@ -392,7 +444,7 @@ class Modul1ERA5(QWidget):
         self._syncing = True
         app_state.update('mesh_bbox', data)
         self.lbl_era_bbox.setText(f"✓ Batas AOI: N{data['N']:.3f}, S{data['S']:.3f}, E{data['E']:.3f}, W{data['W']:.3f}")
-        self.lbl_era_bbox.setStyleSheet("color: #10B981; font-weight: bold; font-size:13px;")
+        self.lbl_era_bbox.setStyleSheet("color: #10B981; font-weight: bold; font-size:13px; margin-top: 4px;")
         
         # Mencegah signal loop back (pembaruan tabel tidak akan memicu penggambaran peta lagi)
         self.tbl_bbox.blockSignals(True)
@@ -422,7 +474,7 @@ class Modul1ERA5(QWidget):
             app_state.update('mesh_bbox', data)
             
             self.lbl_era_bbox.setText(f"✓ Manual BBox disinkronisasi: N{n:.2f}, S{s:.2f}, E{e:.2f}, W{w:.2f}")
-            self.lbl_era_bbox.setStyleSheet("color: #10B981; font-weight: bold; font-size:13px;")
+            self.lbl_era_bbox.setStyleSheet("color: #10B981; font-weight: bold; font-size:13px; margin-top: 4px;")
             
             # Menggambar ulang kotak oranye di peta Leaflet secara dinamis
             js_box = f"addGeoJSON({{\"type\":\"Polygon\",\"coordinates\":[[[{w},{s}],[{e},{s}],[{e},{n}],[{w},{n}],[{w},{s}]]]}}, '#F59E0B');"
@@ -481,7 +533,7 @@ class Modul1ERA5(QWidget):
             self.btn_dl_era5.setText("↓ Mulai Unduh dari Server Copernicus (.nc)")
             
             if success and os.path.exists(path):
-                self.era5_path = path # BUG FIX: Otomatis menetapkan path aktif setelah unduh selesai
+                self.era5_path = path 
                 self.log_era5.append(f"[SYSTEM] Unduhan selesai. File aktif disetel otomatis ke: {os.path.basename(path)}")
                 # Menawarkan ekstraksi otomatis
                 if QMessageBox.question(self, "Sukses", "Unduhan selesai. Apakah Anda ingin mengekstrak rata-rata gelombang (Hs, Tp, Dir) sekarang?") == QMessageBox.StandardButton.Yes:
