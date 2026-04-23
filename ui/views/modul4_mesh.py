@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                              QFormLayout, QLineEdit, QLabel, QPushButton, 
                              QTextEdit, QFileDialog, QMessageBox, QFrame, 
                              QScrollArea, QTabWidget, QTableWidget, QTableWidgetItem, 
-                             QSlider, QComboBox, QCheckBox, QHeaderView)
+                             QSlider, QComboBox, QCheckBox, QHeaderView, QSplitter)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtCore import Qt
@@ -28,36 +28,112 @@ from core.state_manager import app_state
 
 logger = logging.getLogger(__name__)
 
-# --- ENTERPRISE QSS STYLESHEETS (REVOLUT / GRADIENTA INFLUENCE) ---
+# --- ENTERPRISE QSS STYLESHEETS (THE "GOLDEN" CSS FIX) ---
 STYLE_GROUPBOX = """
-    QGroupBox { background-color: #1E293B; border: 1px solid #334155; border-radius: 12px; margin-top: 24px; padding-top: 15px; font-weight: bold; color: #F1F5F9; font-size: 14px; }
-    QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; background-color: #0F172A; border-radius: 6px; color: #F59E0B; top: -12px; left: 15px; }
+    QGroupBox {
+        background-color: #1E293B;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        margin-top: 10px;
+        padding-top: 40px; /* Space lapang agar title duduk manis di dalam */
+        font-weight: bold;
+        color: #F1F5F9;
+        font-size: 14px;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        subcontrol-position: top left;
+        padding: 6px 15px;
+        background-color: #0F172A;
+        border-radius: 8px;
+        color: #F59E0B;
+        top: 10px; /* Positif! Judul masuk ke dalam kotak */
+        left: 12px;
+    }
 """
+
 STYLE_INPUTS = """
-    QLineEdit, QComboBox { background-color: #0F172A; border: 1px solid #475569; border-radius: 6px; padding: 8px 12px; color: #F8FAFC; font-size: 13px; }
+    QLineEdit, QComboBox {
+        background-color: #0F172A;
+        border: 1px solid #475569;
+        border-radius: 6px;
+        padding: 10px 14px;
+        color: #F8FAFC;
+        font-size: 13px;
+        font-family: 'Consolas', 'Courier New', monospace;
+    }
     QLineEdit:focus, QComboBox:focus { border: 1px solid #F59E0B; }
     QComboBox::drop-down { border: none; }
-    QComboBox QAbstractItemView { background-color: #1E293B; color: #F8FAFC; selection-background-color: #334155; border: 1px solid #475569; border-radius: 6px; }
-    QCheckBox { color: #CBD5E1; font-size: 13px; }
+    QComboBox QAbstractItemView {
+        background-color: #1E293B;
+        color: #F8FAFC;
+        selection-background-color: #334155;
+        border: 1px solid #475569;
+        border-radius: 6px;
+    }
+    QCheckBox { color: #CBD5E1; font-size: 13px; font-weight: bold; }
     QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #475569; background: #0F172A; }
     QCheckBox::indicator:checked { background: #F59E0B; border: 1px solid #D97706; }
 """
+
+STYLE_TABLE_LIST = """
+    QTableWidget { 
+        background-color: #0F172A; 
+        color: #F8FAFC; 
+        gridline-color: #334155; 
+        border: 1px solid #334155; 
+        border-radius: 8px; 
+        font-family: 'Consolas', 'Courier New', monospace;
+    }
+    QHeaderView::section { 
+        background-color: #1E293B; 
+        color: #94A3B8; 
+        padding: 8px; 
+        font-weight: bold; 
+        border: 1px solid #334155; 
+    }
+    QTableWidget::item:selected {
+        background-color: #334155;
+        color: #F59E0B;
+    }
+"""
+
 STYLE_BTN_PRIMARY = """
-    QPushButton#ExecuteBtn { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F59E0B, stop:1 #D97706); color: #022C22; border: none; border-radius: 8px; padding: 10px 16px; font-weight: bold; font-size: 14px; }
+    QPushButton#ExecuteBtn {
+        background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F59E0B, stop:1 #D97706);
+        color: #022C22;
+        border: none;
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-weight: bold;
+        font-size: 14px;
+    }
     QPushButton#ExecuteBtn:hover { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FCD34D, stop:1 #F59E0B); }
     QPushButton#ExecuteBtn:pressed { background-color: #B45309; }
     QPushButton#ExecuteBtn:disabled { background-color: #334155; color: #94A3B8; }
 """
+
 STYLE_BTN_OUTLINE = """
-    QPushButton#OutlineBtn { background-color: transparent; color: #F8FAFC; border: 1px solid #64748B; border-radius: 8px; padding: 10px 16px; font-weight: bold; }
+    QPushButton#OutlineBtn {
+        background-color: transparent;
+        color: #F8FAFC;
+        border: 1px solid #64748B;
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-weight: bold;
+        font-size: 13px;
+    }
     QPushButton#OutlineBtn:hover { background-color: #334155; border-color: #F59E0B; color: #F59E0B; }
 """
+
 STYLE_SLIDER = """
     QSlider::groove:horizontal { border-radius: 4px; height: 8px; margin: 0px; background-color: #334155; }
     QSlider::handle:horizontal { background-color: #F59E0B; border: 2px solid #FFFFFF; width: 16px; height: 16px; margin: -4px 0; border-radius: 8px; }
-    QSlider::handle:horizontal:hover { background-color: #FCD34D; }
+    QSlider::handle:horizontal:hover { background-color: #FCD34D; transform: scale(1.2); }
     QSlider::sub-page:horizontal { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10B981, stop:1 #F59E0B); border-radius: 4px; }
 """
+
+LABEL_STYLE = "QLabel { color: #CBD5E1; font-weight: bold; font-size: 13px; }"
 
 
 class Modul4Mesh(QWidget):
@@ -66,11 +142,11 @@ class Modul4Mesh(QWidget):
         self.file_bathy = ""
         self.file_ldb = ""
         self.setup_ui()
-        # [NEW INJECTION]: Memasang telinga pendengar ke Memori Global
+        # Memasang telinga pendengar ke Memori Global untuk Auto-Sync Boundary Direction
         app_state.state_updated.connect(self.on_global_state_changed)
 
     def setup_ui(self) -> None:
-        self.setStyleSheet(f"{STYLE_GROUPBOX} {STYLE_INPUTS} {STYLE_BTN_PRIMARY} {STYLE_BTN_OUTLINE} {STYLE_SLIDER}")
+        self.setStyleSheet(f"{STYLE_GROUPBOX} {STYLE_INPUTS} {STYLE_TABLE_LIST} {STYLE_BTN_PRIMARY} {STYLE_BTN_OUTLINE} {STYLE_SLIDER}")
         
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(24, 24, 24, 24)
@@ -86,13 +162,25 @@ class Modul4Mesh(QWidget):
         head.addWidget(d)
         main_layout.addLayout(head)
 
-        # --- 1. TOP SECTION (MAP / TABS) ---
+        # Menggunakan Splitter Vertikal agar pengguna bisa menyesuaikan tinggi Peta vs Kontrol
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.setChildrenCollapsible(False)
+        splitter.setStyleSheet("QSplitter::handle { background-color: transparent; height: 10px; }")
+
+        # ==============================================================================
+        # 1. TOP SECTION (MAP / TABS)
+        # ==============================================================================
+        top_widget = QWidget()
+        top_section = QHBoxLayout(top_widget)
+        top_section.setContentsMargins(0, 0, 0, 0)
+        top_section.setSpacing(20)
+
+        # KIRI: Interactive Map & Viz Tabs
         self.gis_tabs_m = QTabWidget()
-        self.gis_tabs_m.setMinimumHeight(400)
         self.gis_tabs_m.setStyleSheet("""
-            QTabWidget::pane { border: 1px solid #334155; border-radius: 8px; background: #1E293B; }
-            QTabBar::tab { background: #0F172A; color: #94A3B8; padding: 10px 16px; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px;}
-            QTabBar::tab:selected { background: #1E293B; color: #F59E0B; font-weight: bold; border-bottom: 2px solid #F59E0B;}
+            QTabWidget::pane { border: 1px solid #334155; border-radius: 12px; background: #1E293B; }
+            QTabBar::tab { background: #0F172A; color: #94A3B8; padding: 12px 18px; border-top-left-radius: 8px; border-top-right-radius: 8px; margin-right: 4px; font-weight: bold;}
+            QTabBar::tab:selected { background: #1E293B; color: #F59E0B; border-bottom: 3px solid #F59E0B;}
         """)
         
         tab_map = QWidget()
@@ -107,47 +195,54 @@ class Modul4Mesh(QWidget):
         self.web_mesh.page().setWebChannel(QWebChannel(self.web_mesh.page()))
         self.web_mesh.page().webChannel().registerObject("bridge", self.bridge_mesh)
         self.web_mesh.setHtml(get_leaflet_html("mesh"))
-        
         lay_map.addWidget(self.web_mesh)
         self.gis_tabs_m.addTab(tab_map, "Peta Interaktif (Leaflet)")
 
         tab_mesh_viz = QWidget()
         lay_mz = QVBoxLayout(tab_mesh_viz)
+        lay_mz.setContentsMargins(20, 20, 20, 20)
         self.lbl_mesh_preview = QLabel("Topology UGRID Mesh Preview akan muncul di sini setelah kompilasi.")
         self.lbl_mesh_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_mesh_preview.setStyleSheet("color: #64748B; font-weight: bold;")
+        self.lbl_mesh_preview.setStyleSheet("color: #64748B; font-weight: bold; font-size:14px; background-color:#020617; border-radius:8px; border:2px dashed #334155;")
         lay_mz.addWidget(self.lbl_mesh_preview)
         self.gis_tabs_m.addTab(tab_mesh_viz, "Topologi Mesh")
 
         tab_doc = QWidget()
         lay_doc = QVBoxLayout(tab_doc)
+        lay_doc.setContentsMargins(20, 20, 20, 20)
         self.lbl_doc_plot = QLabel("Plot DoC 2D Panorama Cross Section akan dirender di sini.")
         self.lbl_doc_plot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_doc_plot.setStyleSheet("color: #64748B; font-weight: bold;")
+        self.lbl_doc_plot.setStyleSheet("color: #64748B; font-weight: bold; font-size:14px; background-color:#020617; border-radius:8px; border:2px dashed #334155;")
         lay_doc.addWidget(self.lbl_doc_plot)
         self.gis_tabs_m.addTab(tab_doc, "Panorama DoC")
         
-        top_section = QHBoxLayout()
-        top_section.setSpacing(16)
         top_section.addWidget(self.gis_tabs_m, stretch=7)
         
-        # RIGHT PANEL: AOI & Transect Manual Input
+        # KANAN: AOI & Transect Manual Input Tabs
         self.tabs_aoi = QTabWidget()
         self.tabs_aoi.setStyleSheet(self.gis_tabs_m.styleSheet())
         
+        # Tab 1: Set BBox
         t1 = QWidget()
         l1 = QVBoxLayout(t1)
-        l1.setContentsMargins(16, 16, 16, 16)
-        l1.addWidget(QLabel("Koordinat BBox (Lat/Lon):", styleSheet="color: #F8FAFC; font-weight:bold;"))
+        l1.setContentsMargins(20, 24, 20, 20)
+        lbl_bbox = QLabel("Koordinat BBox (Lat/Lon):")
+        lbl_bbox.setStyleSheet(LABEL_STYLE)
+        l1.addWidget(lbl_bbox)
+        
         self.tbl_bbox = QTableWidget(4, 1)
-        self.tbl_bbox.setStyleSheet("QTableWidget { background-color: #0F172A; color: #F8FAFC; border: 1px solid #334155; border-radius: 6px; }")
         self.tbl_bbox.setVerticalHeaderLabels(["North", "South", "East", "West"])
         self.tbl_bbox.horizontalHeader().setVisible(False)
         self.tbl_bbox.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.tbl_bbox.setMaximumHeight(140)
-        for j in range(4): self.tbl_bbox.setItem(j, 0, QTableWidgetItem(""))
+        self.tbl_bbox.setMaximumHeight(160)
+        for j in range(4): 
+            item = QTableWidgetItem("")
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.tbl_bbox.setItem(j, 0, item)
+            
         self.tbl_bbox.itemChanged.connect(self.manual_update_bbox_vertical)
         l1.addWidget(self.tbl_bbox)
+        
         btn_m1 = QPushButton("Update BBox Area")
         btn_m1.setObjectName("OutlineBtn")
         btn_m1.clicked.connect(self.manual_map_update)
@@ -155,20 +250,26 @@ class Modul4Mesh(QWidget):
         l1.addStretch()
         self.tabs_aoi.addTab(t1, "Set BBox")
         
+        # Tab 2: Transect
         t2 = QWidget()
         l2 = QVBoxLayout(t2)
-        l2.setContentsMargins(16, 16, 16, 16)
-        l2.addWidget(QLabel("Manual Transect Nodes:", styleSheet="color: #F8FAFC; font-weight:bold;"))
+        l2.setContentsMargins(20, 24, 20, 20)
+        lbl_trans = QLabel("Manual Transect Nodes:")
+        lbl_trans.setStyleSheet(LABEL_STYLE)
+        l2.addWidget(lbl_trans)
+        
         self.tbl_man = QTableWidget(2, 2)
-        self.tbl_man.setStyleSheet("QTableWidget { background-color: #0F172A; color: #F8FAFC; border: 1px solid #334155; border-radius: 6px; }")
         self.tbl_man.setHorizontalHeaderLabels(["Lat (Y)", "Lon (X)"])
         self.tbl_man.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.tbl_man.setMaximumHeight(100)
-        self.tbl_man.setItem(0, 0, QTableWidgetItem("-8.460"))
-        self.tbl_man.setItem(0, 1, QTableWidgetItem("112.616"))
-        self.tbl_man.setItem(1, 0, QTableWidgetItem("-8.415"))
-        self.tbl_man.setItem(1, 1, QTableWidgetItem("112.717"))
+        self.tbl_man.setMaximumHeight(120)
+        
+        for i, val in enumerate(["-8.460", "112.616", "-8.415", "112.717"]):
+            item = QTableWidgetItem(val)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.tbl_man.setItem(i//2, i%2, item)
+            
         l2.addWidget(self.tbl_man)
+        
         btn_m2 = QPushButton("Update Line Profiles")
         btn_m2.setObjectName("OutlineBtn")
         btn_m2.clicked.connect(self.manual_map_update)
@@ -177,61 +278,87 @@ class Modul4Mesh(QWidget):
         self.tabs_aoi.addTab(t2, "Transect")
         
         top_section.addWidget(self.tabs_aoi, stretch=3)
-        main_layout.addLayout(top_section, stretch=1)
+        splitter.addWidget(top_widget)
 
-        # --- 2. BOTTOM SECTION (CONTROLS IN SCROLLAREA) ---
+        # ==============================================================================
+        # 2. BOTTOM SECTION (CONTROLS & LOG)
+        # ==============================================================================
+        bot_widget = QWidget()
+        bot_layout = QVBoxLayout(bot_widget)
+        bot_layout.setContentsMargins(0, 0, 0, 0)
+        
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("background-color: transparent;")
+        scroll.setStyleSheet("""
+            QScrollArea { background-color: transparent; }
+            QScrollBar:vertical { background: #0F172A; width: 10px; border-radius: 5px; }
+            QScrollBar::handle:vertical { background: #475569; border-radius: 5px; }
+        """)
         
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setContentsMargins(0, 5, 0, 0)
 
         ctrl = QHBoxLayout()
-        ctrl.setSpacing(20)
+        ctrl.setSpacing(25)
 
         # Col 1: Boundary & Input Editor
         c1 = QVBoxLayout()
         grp1 = QGroupBox("1. Input Data & Oseanografi Fisik")
-        g1 = QVBoxLayout(grp1)
-        g1.setSpacing(14)
         
-        # [NEW FEATURE]: Dynamic Ocean Boundary Direction
-        h_dir = QHBoxLayout()
-        h_dir.addWidget(QLabel("Arah Laut Lepas:", styleSheet="color: #CBD5E1;"))
+        # Fluid Form Layout
+        g1 = QFormLayout(grp1)
+        g1.setHorizontalSpacing(20)
+        g1.setVerticalSpacing(18)
+        
+        # Dynamic Ocean Boundary Direction
         self.cmb_bnd_dir = QComboBox()
-        self.cmb_bnd_dir.addItem("Selatan (Samudra Hindia)", "South")
-        self.cmb_bnd_dir.addItem("Utara (Laut Jawa)", "North")
-        self.cmb_bnd_dir.addItem("Timur", "East")
-        self.cmb_bnd_dir.addItem("Barat", "West")
-        h_dir.addWidget(self.cmb_bnd_dir)
-        g1.addLayout(h_dir)
+        self.cmb_bnd_dir.addItems(["South", "North", "East", "West"])
+        self.cmb_bnd_dir.setItemText(0, "Selatan (Samudra Hindia)")
+        self.cmb_bnd_dir.setItemText(1, "Utara (Laut Jawa)")
+        self.cmb_bnd_dir.setItemText(2, "Timur")
+        self.cmb_bnd_dir.setItemText(3, "Barat")
         
-        # [NEW FEATURE]: Riemann Absorbing Boundary
-        self.chk_riemann = QCheckBox("Gunakan Riemann Absorbing Boundary (Mencegah Refleksi Buatan)")
+        lbl_dir = QLabel("Arah Laut Lepas:"); lbl_dir.setStyleSheet(LABEL_STYLE)
+        g1.addRow(lbl_dir, self.cmb_bnd_dir)
+        
+        # Riemann Absorbing Boundary
+        self.chk_riemann = QCheckBox("Aktifkan Riemann Absorbing Boundary (Anti-Refleksi)")
         self.chk_riemann.setChecked(True) # Diaktifkan by default untuk stabilitas Skripsi
-        self.chk_riemann.setToolTip("Mengubah tipe batas menjadi Weakly Reflective untuk mencegah resonansi ombak pantulan dari pesisir mangrove.")
-        g1.addWidget(self.chk_riemann)
+        self.chk_riemann.setToolTip("Mengubah tipe batas menjadi Weakly Reflective untuk mencegah resonansi ombak pantulan.")
+        g1.addRow("", self.chk_riemann)
+        
+        # Status Label
+        h_status = QHBoxLayout()
+        h_status.setSpacing(15)
         
         self.lbl_mbbox = QLabel("BBOX: Belum Digambar")
-        self.lbl_mtrans = QLabel("Transek: Belum Digambar")
-        self.lbl_mbbox.setStyleSheet("color:#F59E0B; font-weight:bold;")
-        self.lbl_mtrans.setStyleSheet("color:#F59E0B; font-weight:bold;")
-        g1.addWidget(self.lbl_mbbox)
-        g1.addWidget(self.lbl_mtrans)
+        self.lbl_mbbox.setStyleSheet("color:#EF4444; font-weight:bold; font-size:12px; background-color: #0F172A; padding: 6px; border-radius: 4px; border: 1px solid #334155;")
+        self.lbl_mbbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        h1 = QHBoxLayout()
-        btn_b = QPushButton("📂 Unggah Bathy (.xyz)")
+        self.lbl_mtrans = QLabel("Transek: Belum Digambar")
+        self.lbl_mtrans.setStyleSheet("color:#EF4444; font-weight:bold; font-size:12px; background-color: #0F172A; padding: 6px; border-radius: 4px; border: 1px solid #334155;")
+        self.lbl_mtrans.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        h_status.addWidget(self.lbl_mbbox)
+        h_status.addWidget(self.lbl_mtrans)
+        g1.addRow(h_status)
+        
+        # Buttons
+        h_btns = QHBoxLayout()
+        h_btns.setSpacing(15)
+        btn_b = QPushButton("📂 Batimetri (.xyz)")
         btn_b.setObjectName("OutlineBtn")
         btn_b.clicked.connect(lambda: self.load_mesh_file('bathy'))
-        btn_shp = QPushButton("🗺️ Pesisir / Coastline (.shp)")
+        
+        btn_shp = QPushButton("🗺️ Coastline (.shp)")
         btn_shp.setObjectName("OutlineBtn")
         btn_shp.clicked.connect(self.import_aoi_shapefile)
-        h1.addWidget(btn_b)
-        h1.addWidget(btn_shp)
-        g1.addLayout(h1)
+        
+        h_btns.addWidget(btn_b)
+        h_btns.addWidget(btn_shp)
+        g1.addRow(h_btns)
         
         c1.addWidget(grp1)
         c1.addStretch()
@@ -240,39 +367,49 @@ class Modul4Mesh(QWidget):
         # Col 2: Resolution & Builder
         c2 = QVBoxLayout()
         grp2 = QGroupBox("2. Algoritma Fraktal MeshKernel & DIMR Compiler")
+        
         g2 = QFormLayout(grp2)
-        g2.setSpacing(14)
+        g2.setHorizontalSpacing(20)
+        g2.setVerticalSpacing(18)
         
         self.sld_max = QSlider(Qt.Orientation.Horizontal)
         self.sld_max.setRange(50, 500)
         self.sld_max.setValue(100)
         self.inp_max = QLineEdit("100")
         self.inp_max.setFixedWidth(60)
+        self.inp_max.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.sld_max.valueChanged.connect(lambda v: self.inp_max.setText(str(v)))
         self.inp_max.textChanged.connect(lambda t: self.sld_max.setValue(int(t) if t.isdigit() else 100))
         
         hx = QHBoxLayout()
-        hx.addWidget(self.sld_max)
-        hx.addWidget(self.inp_max)
-        g2.addRow("Res. Maksimum (Laut Lepas):", hx)
+        hx.setSpacing(15)
+        hx.addWidget(self.sld_max, stretch=4)
+        hx.addWidget(self.inp_max, stretch=1)
+        
+        lbl_max = QLabel("Res. Maksimum (Laut):"); lbl_max.setStyleSheet(LABEL_STYLE)
+        g2.addRow(lbl_max, hx)
         
         self.sld_min = QSlider(Qt.Orientation.Horizontal)
         self.sld_min.setRange(5, 50)
         self.sld_min.setValue(12)
         self.inp_min = QLineEdit("12")
         self.inp_min.setFixedWidth(60)
+        self.inp_min.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.sld_min.valueChanged.connect(lambda v: self.inp_min.setText(str(v)))
         self.inp_min.textChanged.connect(lambda t: self.sld_min.setValue(int(t) if t.isdigit() else 12))
         
         hm = QHBoxLayout()
-        hm.addWidget(self.sld_min)
-        hm.addWidget(self.inp_min)
-        g2.addRow("Res. Minimum (Mangrove):", hm)
+        hm.setSpacing(15)
+        hm.addWidget(self.sld_min, stretch=4)
+        hm.addWidget(self.inp_min, stretch=1)
+        
+        lbl_min = QLabel("Res. Minimum (Pesisir):"); lbl_min.setStyleSheet(LABEL_STYLE)
+        g2.addRow(lbl_min, hm)
         
         self.lbl_cost = QLabel("Estimasi Beban Node: Menghitung...")
-        self.lbl_cost.setStyleSheet("background-color: #0F172A; padding: 8px; border: 1px solid #334155; border-radius: 6px; font-size: 12px; margin-bottom: 10px;")
+        self.lbl_cost.setStyleSheet("background-color: #0F172A; padding: 10px; border: 1px solid #334155; border-radius: 8px; font-size: 13px; font-weight: bold; color: #94A3B8; margin-top: 5px;")
         g2.addRow("", self.lbl_cost)
 
         btn_doc = QPushButton("🔭 Proses Kalkulasi DoC & 2D Profiler")
@@ -287,21 +424,29 @@ class Modul4Mesh(QWidget):
         
         c2.addWidget(grp2)
         ctrl.addLayout(c2, stretch=5)
+        
         scroll_layout.addLayout(ctrl)
 
-        # --- 3. TERMINAL LOG ---
+        # TERMINAL LOG
         bl = QVBoxLayout()
-        bl.setContentsMargins(0, 10, 0, 0)
+        bl.setContentsMargins(0, 15, 0, 0)
         bl.addWidget(QLabel("Terminal Log Eksekusi Arsitektur:", styleSheet="font-weight:900; color:#38BDF8; font-size: 14px;"))
         self.log_mesh = QTextEdit()
         self.log_mesh.setReadOnly(True)
-        self.log_mesh.setStyleSheet("background-color: #020617; color: #10B981; font-family: Consolas, monospace; font-size: 12px; border: 1px solid #1E293B; border-radius: 6px; padding: 8px;")
+        self.log_mesh.setStyleSheet("background-color: #020617; color: #10B981; font-family: Consolas, monospace; font-size: 12px; border: 1px solid #1E293B; border-radius: 8px; padding: 12px;")
         self.log_mesh.setMinimumHeight(120)
         bl.addWidget(self.log_mesh)
         scroll_layout.addLayout(bl)
         
+        scroll_layout.addStretch()
         scroll.setWidget(scroll_content)
-        main_layout.addWidget(scroll, stretch=1)
+        
+        bot_layout.addWidget(scroll)
+        splitter.addWidget(bot_widget)
+        
+        # Proporsi default Splitter (Peta lebih lebar dari kontrol)
+        splitter.setSizes([600, 300])
+        main_layout.addWidget(splitter)
 
         self.sld_max.valueChanged.connect(self.update_sliders)
         self.sld_min.valueChanged.connect(self.update_sliders)
@@ -344,14 +489,15 @@ class Modul4Mesh(QWidget):
 
     def update_mesh_bbox(self, d: dict) -> None: 
         app_state.update('mesh_bbox', d)
-        self.lbl_mbbox.setText("✓ BBox disinkronisasi dari Peta")
-        self.lbl_mbbox.setStyleSheet("color:#10B981; font-weight:bold;")
+        self.lbl_mbbox.setText("✓ BBox Sinkron Peta")
+        self.lbl_mbbox.setStyleSheet("color:#10B981; font-weight:bold; font-size:12px; background-color: #064E3B; border: 1px solid #047857; padding: 6px; border-radius: 4px;")
         
         self.tbl_bbox.blockSignals(True)
         self.tbl_bbox.setItem(0, 0, QTableWidgetItem(f"{d['N']:.4f}"))
         self.tbl_bbox.setItem(1, 0, QTableWidgetItem(f"{d['S']:.4f}"))
         self.tbl_bbox.setItem(2, 0, QTableWidgetItem(f"{d['E']:.4f}"))
         self.tbl_bbox.setItem(3, 0, QTableWidgetItem(f"{d['W']:.4f}"))
+        for i in range(4): self.tbl_bbox.item(i, 0).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.tbl_bbox.blockSignals(False)
         self.update_sliders()
         
@@ -360,13 +506,17 @@ class Modul4Mesh(QWidget):
 
     def update_mesh_transect(self, d: list) -> None: 
         app_state.update('transect', d)
-        self.lbl_mtrans.setText(f"✓ {len(d)} Titik Node Transek Sinkron")
-        self.lbl_mtrans.setStyleSheet("color:#10B981; font-weight:bold;")
+        self.lbl_mtrans.setText(f"✓ {len(d)} Node Transek")
+        self.lbl_mtrans.setStyleSheet("color:#10B981; font-weight:bold; font-size:12px; background-color: #064E3B; border: 1px solid #047857; padding: 6px; border-radius: 4px;")
         
         self.tbl_man.setRowCount(len(d))
         for i, coord in enumerate(d):
-            self.tbl_man.setItem(i, 0, QTableWidgetItem(f"{coord[0]:.4f}"))
-            self.tbl_man.setItem(i, 1, QTableWidgetItem(f"{coord[1]:.4f}"))
+            item_lat = QTableWidgetItem(f"{coord[0]:.4f}")
+            item_lon = QTableWidgetItem(f"{coord[1]:.4f}")
+            item_lat.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item_lon.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.tbl_man.setItem(i, 0, item_lat)
+            self.tbl_man.setItem(i, 1, item_lon)
 
     def import_aoi_shapefile(self) -> None:
         if not HAS_GEOPANDAS: 
@@ -446,7 +596,7 @@ class Modul4Mesh(QWidget):
         
         if min_r >= max_r: 
             self.lbl_cost.setText("⚠ ERROR: Resolusi Pesisir (Min) tidak boleh >= Resolusi Lepas Pantai (Max).")
-            self.lbl_cost.setStyleSheet("color: #EF4444; font-weight:bold; font-size:12px; background-color:#450A0A;")
+            self.lbl_cost.setStyleSheet("color: #EF4444; font-weight:bold; font-size:13px; background-color:#450A0A; padding: 10px; border-radius: 8px; border: 1px solid #7F1D1D; margin-top: 5px;")
             return
             
         area_m2 = 25000000 
@@ -460,16 +610,16 @@ class Modul4Mesh(QWidget):
         
         if est_nodes < 25000:
             status, color = "🟢 Ringan (PC/Laptop)", "#10B981"
-            bg = "#064E3B"
+            bg, brd = "#064E3B", "#047857"
         elif est_nodes < 60000:
             status, color = "🟡 Menengah (Workstation)", "#F59E0B"
-            bg = "#451A03"
+            bg, brd = "#451A03", "#78350F"
         else:
             status, color = "🔴 BERAT (Wajib HPC/Superkomputer)", "#EF4444"
-            bg = "#450A0A"
+            bg, brd = "#450A0A", "#7F1D1D"
             
         self.lbl_cost.setText(f"Luas Area: {area_m2/1e6:.1f} km² | Estimasi Komputasi: ~{int(est_nodes):,} Nodes | {status}")
-        self.lbl_cost.setStyleSheet(f"color: {color}; font-weight:bold; font-size:12px; background-color:{bg}; padding: 8px; border-radius: 6px;")
+        self.lbl_cost.setStyleSheet(f"color: {color}; font-weight:bold; font-size:13px; background-color:{bg}; padding: 10px; border-radius: 8px; border: 1px solid {brd}; margin-top: 5px;")
 
     # --------------------------------------------------------------------------
     # THREAD EXECUTION & ORCHESTRATION
@@ -557,7 +707,7 @@ class Modul4Mesh(QWidget):
             self.btn_mesh.setEnabled(True)
             self.btn_mesh.setText("⚡ KOMPILASI MDU + SWAN + XML DIMR")
             if success: 
-                QMessageBox.information(self, "Kompilasi Sukses", "Pabrikasi MeshKernel dan XML Coupler telah selesai. Direktori 'Apex_FM_Model_Final' siap dieksekusi di Modul Simulation.")
+                QMessageBox.information(self, "Kompilasi Sukses", "Pabrikasi MeshKernel dan XML Coupler telah selesai. Direktori 'Apex_FM_Model_Final' siap dieksekusi di Modul Execution.")
             self.dimr_worker.deleteLater()
             
         self.dimr_worker.finished_signal.connect(on_mesh_done)
