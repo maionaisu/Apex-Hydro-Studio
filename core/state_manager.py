@@ -62,7 +62,8 @@ class StateManager(QObject):
             
             # System States
             'dimr_path': "",
-            'workspace_dir': ""
+            'workspace_dir': "",
+            'compute_backend': "CPU"  # [NEW] Default to CPU, can be CUDA or HYBRID
         }
 
     def update(self, key: str, value: Any) -> None:
