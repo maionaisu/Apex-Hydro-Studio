@@ -1,22 +1,32 @@
+# ==============================================================================
+# APEX NEXUS TIER-0: CORE UI WIDGETS (INTERACTIVE TOUR OVERLAY)
+# ==============================================================================
+import logging
 from PyQt6.QtWidgets import QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy
 from PyQt6.QtCore import Qt, QRect, QRectF, QPoint
 from PyQt6.QtGui import QPainter, QPainterPath, QColor, QPen
 
+logger = logging.getLogger(__name__)
+
 class InteractiveTourOverlay(QWidget):
     """
-    Overlay to display interactive tours/tips guiding users through the UI.
+    [TIER-0] Overlay to display interactive tours/tips guiding users through the UI.
+    Hardened with boundary clamping to ensure tooltips never render off-screen.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.hide()
+        
         self.current_step = 0
         self.steps = []
         self.target_rect = QRect(0, 0, 0, 0)
         
+        # UI Construction
         self.info_box = QFrame(self)
         self.info_box.setStyleSheet("background-color: #0F172A; border: 1px solid #F59E0B; border-radius: 12px; padding: 20px; width: 340px;")
+        
         self.info_layout = QVBoxLayout(self.info_box)
         self.info_layout.setSpacing(10)
         
@@ -46,59 +56,97 @@ class InteractiveTourOverlay(QWidget):
         self.info_layout.addSpacing(5)
         self.info_layout.addLayout(btn_layout)
 
-    def set_steps(self, steps): 
+    def set_steps(self, steps: list) -> None: 
+        """Validates and loads the tour steps sequence."""
+        if not isinstance(steps, list):
+            logger.error("[TOUR] 'steps' must be a list of dictionaries.")
+            return
         self.steps = steps
 
-    def start_tour(self):
-        if not self.steps: return
+    def start_tour(self) -> None:
+        if not self.steps: 
+            logger.warning("[TOUR] Attempted to start tour with zero steps.")
+            return
+            
         self.current_step = 0
         if self.parent():
             self.resize(self.parent().size())
+            
         self.show()
         self.raise_()
         self.update_step()
 
-    def next_step(self):
+    def next_step(self) -> None:
         self.current_step += 1
         if self.current_step >= len(self.steps): 
             self.hide_tour()
         else: 
             self.update_step()
 
-    def hide_tour(self): 
+    def hide_tour(self) -> None: 
         self.hide()
 
-    def update_step(self):
-        step = self.steps[self.current_step]
-        self.lbl_title.setText(step['title'])
-        self.lbl_desc.setText(step['desc'])
-        self.btn_next.setText("Selesai" if self.current_step == len(self.steps) - 1 else "Lanjut ➔")
-        self.info_box.adjustSize()
-        
-        widget = step['widget']
-        if widget:
-            global_pos_tl = widget.mapToGlobal(QPoint(0,0))
-            local_pos_tl = self.mapFromGlobal(global_pos_tl)
-            global_pos_br = widget.mapToGlobal(QPoint(widget.width(), widget.height()))
-            local_pos_br = self.mapFromGlobal(global_pos_br)
+    def update_step(self) -> None:
+        try:
+            step = self.steps[self.current_step]
+            self.lbl_title.setText(step.get('title', 'Tutorial'))
+            self.lbl_desc.setText(step.get('desc', '...'))
+            self.btn_next.setText("Selesai" if self.current_step == len(self.steps) - 1 else "Lanjut ➔")
             
-            self.target_rect = QRect(local_pos_tl, local_pos_br).adjusted(-8, -8, 8, 8)
-            box_w = self.info_box.width()
-            box_h = self.info_box.height()
-            screen_w = self.width()
-            screen_h = self.height()
+            # Memaksa UI menghitung ulang ukuran frame setelah teks panjang dimasukkan
+            self.info_box.adjustSize()
             
-            x = local_pos_br.x() + 20
-            if x + box_w > screen_w: x = local_pos_tl.x() - box_w - 20
-            y = local_pos_tl.y()
-            if y + box_h > screen_h: y = screen_h - box_h - 20
-            self.info_box.move(max(10, x), max(10, y))
-        else:
-            self.target_rect = QRect(0,0,0,0)
-            self.info_box.move(self.width()//2 - self.info_box.width()//2, self.height()//2 - self.info_box.height()//2)
-        self.update()
+            widget = step.get('widget')
+            
+            # Jika widget target ada dan masih valid (belum dihapus oleh GC)
+            if widget and not widget.isHidden():
+                # Translasi koordinat dari widget target ke koordinat global layar
+                global_pos_tl = widget.mapToGlobal(QPoint(0,0))
+                local_pos_tl = self.mapFromGlobal(global_pos_tl)
+                
+                global_pos_br = widget.mapToGlobal(QPoint(widget.width(), widget.height()))
+                local_pos_br = self.mapFromGlobal(global_pos_br)
+                
+                # Membesarkan lubang sorot (padding -8, +8)
+                self.target_rect = QRect(local_pos_tl, local_pos_br).adjusted(-8, -8, 8, 8)
+                
+                box_w = self.info_box.width()
+                box_h = self.info_box.height()
+                screen_w = self.width()
+                screen_h = self.height()
+                
+                # Failsafe Boundary Clamping (Mencegah Tooltip keluar dari layar)
+                x = local_pos_br.x() + 20
+                if x + box_w > screen_w: 
+                    x = local_pos_tl.x() - box_w - 20
+                    
+                y = local_pos_tl.y()
+                if y + box_h > screen_h: 
+                    y = screen_h - box_h - 20
+                    
+                # Pengaman ekstra: Kotak tidak boleh memiliki koordinat negatif
+                self.info_box.move(max(10, x), max(10, y))
+            else:
+                # Mode Layar Penuh (Tidak ada widget spesifik yang disorot)
+                self.target_rect = QRect(0,0,0,0)
+                # Tengahkan kotak info di layar
+                self.info_box.move(max(0, self.width()//2 - self.info_box.width()//2), 
+                                   max(0, self.height()//2 - self.info_box.height()//2))
+                                   
+            self.update() # Memicu paintEvent ulang
+            
+        except Exception as e:
+            logger.error(f"[TOUR] Gagal merender langkah tur ke-{self.current_step}: {str(e)}")
+            self.hide_tour()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event) -> None:
+        """
+        Menggambar latar belakang semi-transparan dengan lubang transparan ('sorotan')
+        di atas target_rect menggunakan komposisi jalur (OddEvenFill).
+        """
+        if self.width() <= 0 or self.height() <= 0:
+            return
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
@@ -110,11 +158,14 @@ class InteractiveTourOverlay(QWidget):
             hole.addRoundedRect(QRectF(self.target_rect), 8, 8)
             path.addPath(hole)
             
+        # OddEvenFill = bagian yang bertumpuk (hole) tidak akan diisi warna
         path.setFillRule(Qt.FillRule.OddEvenFill)
+        # Efek Dimming (Layar menggelap)
         painter.fillPath(path, QColor(0, 0, 0, 220))
         
+        # Outline emas pada lubang sorot
         if not self.target_rect.isEmpty():
-            pen = QPen(QColor(245, 158, 11))
+            pen = QPen(QColor(245, 158, 11)) # Amber-500
             pen.setWidth(2)
             painter.setPen(pen)
             painter.drawRoundedRect(self.target_rect, 8, 8)
