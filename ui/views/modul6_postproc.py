@@ -8,7 +8,7 @@ import traceback
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
                              QFormLayout, QComboBox, QLabel, QPushButton, 
                              QTextEdit, QFileDialog, QScrollArea, QSlider, QFrame,
-                             QTableWidget, QTableWidgetItem, QMessageBox, QTabWidget, QHeaderView)
+                             QTableWidget, QTableWidgetItem, QMessageBox, QTabWidget, QHeaderView, QSplitter)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtCore import Qt
@@ -26,34 +26,106 @@ from ui.components.web_bridge import WebBridge
 
 logger = logging.getLogger(__name__)
 
-# --- ENTERPRISE QSS STYLESHEETS (REVOLUT / GRADIENTA INFLUENCE) ---
+# --- ENTERPRISE QSS STYLESHEETS (THE "GOLDEN" CSS FIX) ---
 STYLE_GROUPBOX = """
-    QGroupBox { background-color: #1E293B; border: 1px solid #334155; border-radius: 12px; margin-top: 24px; padding-top: 15px; font-weight: bold; color: #F1F5F9; font-size: 14px; }
-    QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; background-color: #0F172A; border-radius: 6px; color: #F59E0B; top: -12px; left: 15px; }
+    QGroupBox {
+        background-color: #1E293B;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        margin-top: 10px;
+        padding-top: 40px; /* Space lapang agar title duduk manis di dalam */
+        font-weight: bold;
+        color: #F1F5F9;
+        font-size: 14px;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        subcontrol-position: top left;
+        padding: 6px 15px;
+        background-color: #0F172A;
+        border-radius: 8px;
+        color: #F59E0B;
+        top: 10px; /* Positif! Judul masuk ke dalam kotak */
+        left: 12px;
+    }
 """
+
 STYLE_INPUTS = """
-    QComboBox { background-color: #0F172A; border: 1px solid #475569; border-radius: 6px; padding: 8px 12px; color: #F8FAFC; font-size: 13px; }
+    QComboBox {
+        background-color: #0F172A;
+        border: 1px solid #475569;
+        border-radius: 6px;
+        padding: 10px 14px;
+        color: #F8FAFC;
+        font-size: 13px;
+        font-family: 'Consolas', 'Courier New', monospace;
+    }
     QComboBox:focus { border: 1px solid #F59E0B; }
-    QComboBox::drop-down { border: none; }
-    QComboBox QAbstractItemView { background-color: #1E293B; color: #F8FAFC; selection-background-color: #334155; border: 1px solid #475569; border-radius: 6px; }
+    QComboBox::drop-down { border: none; width: 20px; }
+    QComboBox QAbstractItemView {
+        background-color: #1E293B;
+        color: #F8FAFC;
+        selection-background-color: #334155;
+        border: 1px solid #475569;
+        border-radius: 6px;
+    }
 """
+
+STYLE_TABLE_LIST = """
+    QTableWidget { 
+        background-color: #0F172A; 
+        color: #F8FAFC; 
+        gridline-color: #334155; 
+        border: 1px solid #334155; 
+        border-radius: 8px; 
+        font-family: 'Consolas', 'Courier New', monospace;
+    }
+    QHeaderView::section { 
+        background-color: #1E293B; 
+        color: #94A3B8; 
+        padding: 8px; 
+        font-weight: bold; 
+        border: 1px solid #334155; 
+    }
+"""
+
 STYLE_BTN_PRIMARY = """
-    QPushButton#ExecuteBtn { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F59E0B, stop:1 #D97706); color: #022C22; border: none; border-radius: 8px; padding: 10px 16px; font-weight: bold; font-size: 14px; }
-    QPushButton#ExecuteBtn:hover { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FCD34D, stop:1 #F59E0B); }
+    QPushButton#ExecuteBtn {
+        background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F59E0B, stop:1 #D97706);
+        color: #022C22;
+        border: none;
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-weight: bold;
+        font-size: 14px;
+    }
+    QPushButton#ExecuteBtn:hover { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FCD34D, stop:1 #F59E0B); transform: scale(1.02); }
     QPushButton#ExecuteBtn:pressed { background-color: #B45309; }
     QPushButton#ExecuteBtn:disabled { background-color: #334155; color: #94A3B8; }
 """
+
 STYLE_BTN_OUTLINE = """
-    QPushButton#OutlineBtn { background-color: transparent; color: #F8FAFC; border: 1px solid #64748B; border-radius: 8px; padding: 10px 16px; font-weight: bold; }
+    QPushButton#OutlineBtn {
+        background-color: transparent;
+        color: #F8FAFC;
+        border: 1px solid #64748B;
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-weight: bold;
+        font-size: 13px;
+    }
     QPushButton#OutlineBtn:hover { background-color: #334155; border-color: #F59E0B; color: #F59E0B; }
 """
+
 STYLE_SLIDER = """
-    QSlider::groove:horizontal { border-radius: 4px; height: 8px; margin: 0px; background-color: #334155; }
-    QSlider::handle:horizontal { background-color: #F59E0B; border: 2px solid #FFFFFF; width: 16px; height: 16px; margin: -4px 0; border-radius: 8px; }
+    QSlider::groove:horizontal { border-radius: 6px; height: 12px; margin: 0px; background-color: #334155; }
+    QSlider::handle:horizontal { background-color: #F59E0B; border: 3px solid #FFFFFF; width: 20px; height: 20px; margin: -5px 0; border-radius: 10px; }
     QSlider::handle:horizontal:hover { background-color: #FCD34D; transform: scale(1.2); }
-    QSlider::sub-page:horizontal { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10B981, stop:1 #F59E0B); border-radius: 4px; }
-    QSlider:disabled { opacity: 0.5; }
+    QSlider::sub-page:horizontal { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10B981, stop:1 #F59E0B); border-radius: 6px; }
+    QSlider:disabled { opacity: 0.4; }
 """
+
+LABEL_STYLE = "QLabel { color: #CBD5E1; font-weight: bold; font-size: 13px; }"
 
 
 class Modul6PostProc(QWidget):
@@ -64,7 +136,7 @@ class Modul6PostProc(QWidget):
         self.setup_ui()
 
     def setup_ui(self) -> None:
-        self.setStyleSheet(f"{STYLE_GROUPBOX} {STYLE_INPUTS} {STYLE_BTN_PRIMARY} {STYLE_BTN_OUTLINE} {STYLE_SLIDER}")
+        self.setStyleSheet(f"{STYLE_GROUPBOX} {STYLE_INPUTS} {STYLE_TABLE_LIST} {STYLE_BTN_PRIMARY} {STYLE_BTN_OUTLINE} {STYLE_SLIDER}")
         
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(24, 24, 24, 24)
@@ -72,7 +144,7 @@ class Modul6PostProc(QWidget):
 
         # --- HEADER ---
         head = QVBoxLayout()
-        t = QLabel("Post-Processing & Data Visualization")
+        t = QLabel("Post-Processing & Spatio-Temporal Animation")
         t.setStyleSheet("font-size: 26px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px;")
         d = QLabel("Visualisasi Output NetCDF (*_map.nc) dari Deltares secara spasial menggunakan Leaflet Heatmaps Dinamis.")
         d.setStyleSheet("color: #94A3B8; font-size: 14px;")
@@ -80,9 +152,18 @@ class Modul6PostProc(QWidget):
         head.addWidget(d)
         main_layout.addLayout(head)
 
-        # --- 1. TOP SECTION (MAP & AOI) ---
-        top_section = QHBoxLayout()
-        top_section.setSpacing(16)
+        # Splitter Layout Transparan (Peta vs Kontrol)
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.setChildrenCollapsible(False)
+        splitter.setStyleSheet("QSplitter::handle { background-color: transparent; height: 10px; }")
+
+        # ==============================================================================
+        # 1. TOP SECTION (MAP & AOI)
+        # ==============================================================================
+        top_widget = QWidget()
+        top_section = QHBoxLayout(top_widget)
+        top_section.setContentsMargins(0, 0, 0, 0)
+        top_section.setSpacing(20)
         
         # LEFT: MAP
         top_wrap = QFrame()
@@ -100,25 +181,26 @@ class Modul6PostProc(QWidget):
         # RIGHT: AOI Tabs
         self.tabs_aoi = QTabWidget()
         self.tabs_aoi.setStyleSheet("""
-            QTabWidget::pane { border: 1px solid #334155; border-radius: 8px; background: #1E293B; }
-            QTabBar::tab { background: #0F172A; color: #94A3B8; padding: 10px 16px; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px;}
-            QTabBar::tab:selected { background: #1E293B; color: #F59E0B; font-weight: bold; border-bottom: 2px solid #F59E0B;}
+            QTabWidget::pane { border: 1px solid #334155; border-radius: 12px; background: #1E293B; }
+            QTabBar::tab { background: #0F172A; color: #94A3B8; padding: 12px 18px; border-top-left-radius: 8px; border-top-right-radius: 8px; margin-right: 4px; font-weight: bold;}
+            QTabBar::tab:selected { background: #1E293B; color: #F59E0B; border-bottom: 3px solid #F59E0B;}
         """)
 
         # Tab 1: Shapefile / KML Subset
         t1 = QWidget()
         l1 = QVBoxLayout(t1)
-        l1.setContentsMargins(16, 20, 16, 16)
-        lbl_msg = QLabel("📂 Unggah batas Area Geospasial untuk mengekstrak dan menyorot data Heatmap ke lokasi pesisir spesifik.")
+        l1.setContentsMargins(20, 24, 20, 20)
+        lbl_msg = QLabel("📂 Unggah batas Area Geospasial (AOI) untuk mengekstrak dan menyorot data Heatmap ke lokasi pesisir spesifik.")
         lbl_msg.setStyleSheet("color: #CBD5E1; font-size: 13px; line-height: 1.5;")
         lbl_msg.setWordWrap(True)
+        lbl_msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         btn_shp = QPushButton("Muat Vector Pesisir (.shp/.kml)")
         btn_shp.setObjectName("OutlineBtn")
         btn_shp.clicked.connect(self.import_aoi_shapefile)
         
         l1.addWidget(lbl_msg)
-        l1.addSpacing(10)
+        l1.addSpacing(15)
         l1.addWidget(btn_shp)
         l1.addStretch()
         self.tabs_aoi.addTab(t1, "SHP/KML Subset")
@@ -126,20 +208,16 @@ class Modul6PostProc(QWidget):
         # Tab 2: Manual BBox Bounds
         t2 = QWidget()
         l2 = QVBoxLayout(t2)
-        l2.setContentsMargins(16, 16, 16, 16)
+        l2.setContentsMargins(20, 24, 20, 20)
         lbl_aoi = QLabel("Manual Bounding Box (Lat/Lon):")
-        lbl_aoi.setStyleSheet("font-weight: bold; color: #F8FAFC; font-size: 13px;")
+        lbl_aoi.setStyleSheet(LABEL_STYLE)
         l2.addWidget(lbl_aoi)
         
         self.tbl_bbox = QTableWidget(4, 1)
-        self.tbl_bbox.setStyleSheet("""
-            QTableWidget { background-color: #0F172A; color: #F8FAFC; gridline-color: #334155; border: 1px solid #334155; border-radius: 6px; }
-            QHeaderView::section { background-color: #1E293B; color: #94A3B8; padding: 4px; font-weight: bold; border: 1px solid #334155; }
-        """)
         self.tbl_bbox.setVerticalHeaderLabels(["North", "South", "East", "West"])
         self.tbl_bbox.horizontalHeader().setVisible(False)
         self.tbl_bbox.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.tbl_bbox.setMaximumHeight(150)
+        self.tbl_bbox.setMaximumHeight(160)
         
         for j in range(4): 
             item = QTableWidgetItem("")
@@ -152,26 +230,38 @@ class Modul6PostProc(QWidget):
         self.tabs_aoi.addTab(t2, "Manual Params")
         
         top_section.addWidget(self.tabs_aoi, stretch=3)
-        main_layout.addLayout(top_section, stretch=1)
+        splitter.addWidget(top_widget)
 
-        # --- 2. BOTTOM SECTION (CONTROLS & TIMELINE) ---
+        # ==============================================================================
+        # 2. BOTTOM SECTION (CONTROLS & TIMELINE)
+        # ==============================================================================
+        bot_widget = QWidget()
+        bot_layout = QVBoxLayout(bot_widget)
+        bot_layout.setContentsMargins(0, 0, 0, 0)
+        
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("background-color: transparent;")
+        scroll.setStyleSheet("""
+            QScrollArea { background-color: transparent; }
+            QScrollBar:vertical { background: #0F172A; width: 10px; border-radius: 5px; }
+            QScrollBar::handle:vertical { background: #475569; border-radius: 5px; }
+        """)
         
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(0, 10, 0, 0)
+        scroll_layout.setContentsMargins(0, 5, 0, 0)
 
         ctrl = QHBoxLayout()
-        ctrl.setSpacing(20)
+        ctrl.setSpacing(25)
         
         # Col 1: File & Variable
         c1 = QVBoxLayout()
         grp1 = QGroupBox("1. Dataset & Variabel Fisik (.map.nc)")
+        
         g1 = QFormLayout(grp1)
-        g1.setSpacing(14)
+        g1.setHorizontalSpacing(20)
+        g1.setVerticalSpacing(18)
         
         self.btn_nc = QPushButton("📂 Muat Hasil Simulasi (.map.nc)")
         self.btn_nc.setObjectName("OutlineBtn")
@@ -189,7 +279,8 @@ class Modul6PostProc(QWidget):
             'Tp',             # Peak wave period (SWAN)
             'Wdir'            # Wave direction (SWAN)
         ])
-        g1.addRow("Pilih Variabel:", self.cmb_var)
+        lbl_var = QLabel("Pilih Variabel:"); lbl_var.setStyleSheet(LABEL_STYLE)
+        g1.addRow(lbl_var, self.cmb_var)
         
         self.btn_ren = QPushButton("▶ Render Heatmap Sekarang")
         self.btn_ren.setObjectName("ExecuteBtn")
@@ -197,24 +288,26 @@ class Modul6PostProc(QWidget):
         g1.addRow(self.btn_ren)
         
         c1.addWidget(grp1)
+        c1.addStretch()
         ctrl.addLayout(c1, stretch=4)
 
         # Col 2: Time Control (Scrubber)
         c2 = QVBoxLayout()
         grp2 = QGroupBox("2. Time Series Scrubber (Animasi Dinamis)")
         g2 = QVBoxLayout(grp2)
-        g2.setSpacing(14)
+        g2.setSpacing(18)
         
         h_info = QHBoxLayout()
-        self.lbl_t_idx = QLabel("Time Index: 0")
+        self.lbl_t_idx = QLabel("Time Index: [ 0 ]")
         self.lbl_t_str = QLabel("Timestamp: -")
         self.lbl_val_range = QLabel("Range (Min-Max): -")
         
-        self.lbl_t_idx.setStyleSheet("color:#38BDF8; font-weight:bold; font-size:13px;")
-        self.lbl_t_str.setStyleSheet("color:#10B981; font-weight:bold; font-size:13px;")
-        self.lbl_val_range.setStyleSheet("color:#F59E0B; font-weight:bold; font-size:13px; background-color:#451A03; padding:4px; border-radius:4px;")
+        self.lbl_t_idx.setStyleSheet("color:#38BDF8; font-weight:900; font-size:14px; font-family: 'Consolas', monospace;")
+        self.lbl_t_str.setStyleSheet("color:#10B981; font-weight:900; font-size:14px; font-family: 'Consolas', monospace; background-color:#064E3B; padding:6px 12px; border-radius:6px; border: 1px solid #047857;")
+        self.lbl_val_range.setStyleSheet("color:#F59E0B; font-weight:900; font-size:13px; font-family: 'Consolas', monospace; background-color:#451A03; padding:6px 12px; border-radius:6px; border: 1px solid #78350F;")
         
         h_info.addWidget(self.lbl_t_idx)
+        h_info.addStretch()
         h_info.addWidget(self.lbl_t_str)
         h_info.addStretch()
         h_info.addWidget(self.lbl_val_range)
@@ -228,24 +321,33 @@ class Modul6PostProc(QWidget):
         self.sld_time.sliderReleased.connect(self.on_slider_released)
         g2.addWidget(self.sld_time)
         
+        g2.addStretch()
         c2.addWidget(grp2)
+        c2.addStretch()
         ctrl.addLayout(c2, stretch=6)
+        
         scroll_layout.addLayout(ctrl)
 
         # --- 3. BOTTOM: LOG ---
         bl = QVBoxLayout()
-        bl.setContentsMargins(0, 10, 0, 0)
+        bl.setContentsMargins(0, 15, 0, 0)
         bl.addWidget(QLabel("Terminal Rendering Status:", styleSheet="font-weight:900; color:#38BDF8; font-size: 14px;"))
         self.log_viz = QTextEdit()
         self.log_viz.setReadOnly(True)
-        self.log_viz.setStyleSheet("background-color: #020617; color: #10B981; font-family: Consolas, monospace; font-size: 12px; border: 1px solid #1E293B; border-radius: 6px; padding: 8px;")
-        self.log_viz.setMaximumHeight(100)
+        self.log_viz.setStyleSheet("background-color: #020617; color: #10B981; font-family: Consolas, monospace; font-size: 12px; border: 1px solid #1E293B; border-radius: 8px; padding: 12px;")
+        self.log_viz.setMinimumHeight(100)
         bl.addWidget(self.log_viz)
         
         scroll_layout.addLayout(bl)
         scroll_layout.addStretch()
         scroll.setWidget(scroll_content)
-        main_layout.addWidget(scroll, stretch=1)
+        
+        bot_layout.addWidget(scroll)
+        splitter.addWidget(bot_widget)
+        
+        # Proporsi Splitter: Peta mengambil mayoritas layar
+        splitter.setSizes([600, 250])
+        main_layout.addWidget(splitter)
 
     # --------------------------------------------------------------------------
     # DATA & INTERACTION LOGIC
@@ -307,7 +409,7 @@ class Modul6PostProc(QWidget):
 
     def on_slider_moved(self, val: int) -> None:
         # Pembaruan Label *secara cepat* tanpa mengeksekusi NetCDF (Mencegah Lag)
-        self.lbl_t_idx.setText(f"Time Index: {val} / {self.current_max_time}")
+        self.lbl_t_idx.setText(f"Time Index: [ {val} / {self.current_max_time} ]")
 
     def on_slider_released(self) -> None:
         # Eksekusi NetCDF hanya saat user melepas klik Mouse pada slider
