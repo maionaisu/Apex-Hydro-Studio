@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                              QLineEdit, QLabel, QPushButton, QTextEdit, 
                              QFileDialog, QMessageBox, QFrame, QScrollArea, QFormLayout)
 from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtGui import QCursor
 
 from engines.dimr_executor import DIMREngineManager
 from core.state_manager import app_state
