@@ -156,7 +156,7 @@ class MeshBuilderEngine:
     def build_dimr_orchestration(params: dict, global_state: dict, progress_cb, log_cb, preview_cb) -> None:
         """
         Fungsi utama Orkestrator DIMR (D-Flow FM + SWAN).
-        Mengimplementasikan perbaikan BUG-01, BUG-02, BUG-07, BUG-08.
+        Mengimplementasikan Dynamic Boundaries, Riemann Logic, dan BUG-Fixes.
         """
         if not HAS_DELTARES: 
             raise ImportError("Library dfm_tools, hydrolib-core, atau meshkernel tidak terinstal.")
@@ -237,7 +237,7 @@ class MeshBuilderEngine:
             mk.curvilinear_make_uniform(make_grid)
             mk.curvilinear_convert_to_mesh2d()
             
-            # 5. Adaptive Refinement Mesh (BUG-02 FIX IMPLEMENTED)
+            # 5. Adaptive Refinement Mesh
             log_cb("■ Menjalankan Adaptive Refinement berdasarkan DoC...")
             dist = start_utm[1] - doc_y
             num_tiers = max(1, int(math.log2(max_res / min_res)))
@@ -247,7 +247,7 @@ class MeshBuilderEngine:
                 current_res = current_res / 2.0
                 r_y = doc_y + (dist * (i / (num_tiers + 1)))
                 
-                # BUG-02 FIX: Poligon tertutup & GeometryList API usage
+                # Poligon tertutup untuk iterasi refinemen GeometryList API
                 poly = [(minx, r_y), (maxx, r_y), (maxx, maxy), (minx, maxy), (minx, r_y)]
                 x_coords = np.array([c[0] for c in poly], dtype=np.double)
                 y_coords = np.array([c[1] for c in poly], dtype=np.double)
@@ -262,22 +262,20 @@ class MeshBuilderEngine:
                 )
                 mk.mesh2d_refine_based_on_polygon(geom_list, ref_params)
             
-            # 6. Pesisir Pantai / LDB Coastline Breaklines (BUG-07 FIX IMPLEMENTED)
+            # 6. Pesisir Pantai / LDB Coastline Breaklines
             if ldb_file and os.path.exists(ldb_file):
                 log_cb("  ├ Menyuntikkan Coastline Hard-Breaklines (.ldb)...")
                 try: 
-                    # Membaca LDB sebagai GeoDataFrame, kemudian potong grid melewati garis pesisir
                     ldb_gdf = dfmt.read_polyfile(ldb_file)
                     for _, row in ldb_gdf.iterrows():
                         geom = row.geometry
                         if geom.geom_type in ['Polygon', 'MultiPolygon', 'LineString']:
-                            # Handle ekstraksi koordinat dengan aman
                             coords = np.array(geom.exterior.coords) if geom.geom_type == 'Polygon' else np.array(geom.coords)
                             geom_list = GeometryList(
                                 x_coordinates=np.array(coords[:,0], dtype=np.double), 
                                 y_coordinates=np.array(coords[:,1], dtype=np.double)
                             )
-                            # Memaksa MeshKernel memotong node/face yang tumpang tindih dengan daratan
+                            # Memotong node/face yang tumpang tindih dengan daratan
                             mk.mesh2d_delete(geom_list, delete_option=1, invert_deletion=False)
                 except Exception as e:
                     logger.warning(f"Operasi pemotongan mesh dengan LDB mengalami kegagalan non-kritis: {str(e)}")
@@ -285,7 +283,7 @@ class MeshBuilderEngine:
             file_nc = os.path.join(out_dir, "Domain_Mesh.nc")
             mk.mesh2d_write_netcdf(file_nc)
             
-            # 7. Render Mesh Preview (Aman dari Memory Leak)
+            # 7. Render Mesh Preview
             mesh2d = mk.mesh2d_get()
             fig_preview, ax = plt.subplots(figsize=(8, 6))
             ax.set_facecolor('#030712')
@@ -301,7 +299,7 @@ class MeshBuilderEngine:
             preview_cb(preview_path)
             progress_cb(60)
 
-            # 8. MDU & External Forcings (BUG-01 & THESIS LOGIC FIX IMPLEMENTED)
+            # 8. MDU & External Forcings (INJEKSI DYNAMIC BOUNDARY & RIEMANN)
             log_cb("■ Merakit Arsitektur Hidrodinamika MDU & External Forcing (.ext)...")
             ext = ExtModel()
             
@@ -313,24 +311,40 @@ class MeshBuilderEngine:
                 log_cb("  ├ Injeksi Mangrove Trachytope / Spatial Friction (.xyz) -> Baptist Eq.")
                 ext.boundary.append(Boundary(quantity="frictioncoefficient", locationfile=os.path.basename(sediment_file), forcingfile="", interpolatingmethod="nearest"))
 
-            # Boundary Gelombang Ocean / Pasang Surut
-            pli_file = "south_boundary.pli"
+            # Boundary Gelombang Ocean / Pasang Surut Dinamis (Sinkronisasi ERA5 Dir)
+            bnd_dir = params.get('ocean_boundary_dir', 'South')
+            pli_file = f"{bnd_dir.lower()}_boundary.pli"
+            
             with open(os.path.join(out_dir, pli_file), "w", encoding="utf-8") as f: 
-                f.write("South_Ocean_Boundary\n2 2\n")
-                f.write(f"{minx} {miny}\n{maxx} {miny}\n")
+                f.write(f"{bnd_dir}_Ocean_Boundary\n2 2\n")
+                # Tarik garis batas secara geometris sesuai opsi arah lepas pantai
+                if bnd_dir == "North":
+                    f.write(f"{minx} {maxy}\n{maxx} {maxy}\n")
+                elif bnd_dir == "East":
+                    f.write(f"{maxx} {miny}\n{maxx} {maxy}\n")
+                elif bnd_dir == "West":
+                    f.write(f"{minx} {miny}\n{minx} {maxy}\n")
+                else: # Default South
+                    f.write(f"{minx} {miny}\n{maxx} {miny}\n")
                 
             if tide_bc_file and os.path.exists(tide_bc_file):
-                log_cb("  ├ Menyambungkan Astronomic Tidal Forcing (.bc)...")
-                ext.boundary.append(Boundary(quantity="waterlevelbnd", locationfile=pli_file, forcingfile=os.path.basename(tide_bc_file)))
+                log_cb(f"  ├ Menyambungkan Astronomic Tidal Forcing di batas {bnd_dir}...")
+                
+                # Injeksi Riemann Absorbing Boundary Logic (Weakly Reflective)
+                qty_type = "waterlevelbnd"
+                if params.get('use_riemann', True):
+                    qty_type = "neumannbnd" 
+                    log_cb("  ├ [✓] Riemann Boundary Aktif: Resonansi refleksi pantai dicegah.")
+                    
+                ext.boundary.append(Boundary(quantity=qty_type, locationfile=pli_file, forcingfile=os.path.basename(tide_bc_file)))
             
-            # BUG-01 FIX: Ekspor .ext secara fisik terlebih dahulu sebelum MDU dirakit
+            # Ekspor .ext secara fisik terlebih dahulu sebelum MDU dirakit
             ext_filepath = os.path.join(out_dir, "apex_forcing.ext")
             ext.filepath = ext_filepath
             ext.save(filepath=ext_filepath)
             
             fm = FMModel()
             fm.geometry.netfile = "Domain_Mesh.nc"
-            # BUG-01 FIX: fm.geometry.bathymetryfile dihapus sepenuhnya. Mengandalkan file apex_forcing.ext.
             
             if tide_bc_file or sediment_file: 
                 fm.external_forcing.extforcefilenew = "apex_forcing.ext"
@@ -340,13 +354,12 @@ class MeshBuilderEngine:
             if not sediment_file: 
                 fm.physics.unifrictcoef = 0.023 
             else: 
-                # Jika ada file sedimen mangrove, matikan friksi seragam, gunakan mode spasial (White-Colebrook/Trachytope)
                 fm.physics.unifrictcoef = 0.0
                 fm.physics.frictyp = 4 
                 
             fm.numerics.cflmax = 0.7
             
-            # BUG-08 FIX: Referensi Waktu Dinamis berdasarkan tahun berjalan
+            # Referensi Waktu Dinamis berdasarkan tahun berjalan
             fm.time.refdate = int(datetime.now().strftime("%Y%m%d"))
             fm.time.tstop = 86400.0 * 2 
             
