@@ -7,7 +7,7 @@ import traceback
 import pandas as pd
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
                              QFormLayout, QComboBox, QCheckBox, QLabel, QPushButton, 
-                             QTextEdit, QFileDialog, QSplitter, QTabWidget, QFrame, QMessageBox)
+                             QTextEdit, QFileDialog, QSplitter, QTabWidget, QFrame, QMessageBox, QSpinBox)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 
@@ -17,14 +17,13 @@ from core.state_manager import app_state
 logger = logging.getLogger(__name__)
 
 # --- ENTERPRISE QSS STYLESHEETS (THE "GOLDEN" CSS FIX) ---
-# Gunakan blok CSS ini untuk disalin ke modul-modul lain jika Anda ingin!
 STYLE_GROUPBOX = """
     QGroupBox {
         background-color: #1E293B;
         border: 1px solid #334155;
         border-radius: 12px;
         margin-top: 10px;
-        padding-top: 40px; /* Space lapang agar title duduk manis di dalam */
+        padding-top: 40px; 
         font-weight: bold;
         color: #F1F5F9;
         font-size: 14px;
@@ -36,22 +35,23 @@ STYLE_GROUPBOX = """
         background-color: #0F172A;
         border-radius: 8px;
         color: #F59E0B;
-        top: 10px; /* Positif! Judul masuk ke dalam kotak, dijamin TIDAK TERPOTONG */
+        top: 10px; 
         left: 12px;
     }
 """
 
+# [UPDATE]: Menambahkan QSpinBox ke dalam daftar elemen yang dipercantik
 STYLE_INPUTS = """
-    QComboBox {
+    QComboBox, QSpinBox {
         background-color: #0F172A;
         border: 1px solid #475569;
         border-radius: 6px;
-        padding: 10px 14px; /* Ditebalkan agar elegan */
+        padding: 10px 14px; 
         color: #F8FAFC;
         font-size: 13px;
         min-width: 150px;
     }
-    QComboBox:focus { border: 1px solid #F59E0B; }
+    QComboBox:focus, QSpinBox:focus { border: 1px solid #F59E0B; }
     QComboBox::drop-down { border: none; }
     QComboBox QAbstractItemView {
         background-color: #1E293B;
@@ -60,6 +60,13 @@ STYLE_INPUTS = """
         border: 1px solid #475569;
         border-radius: 6px;
     }
+    QSpinBox::up-button, QSpinBox::down-button {
+        background-color: #334155;
+        border-radius: 2px;
+        width: 16px;
+    }
+    QSpinBox::up-button:hover, QSpinBox::down-button:hover { background-color: #F59E0B; }
+    
     QCheckBox { color: #CBD5E1; font-size: 13px; font-weight: bold; }
     QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #475569; background: #0F172A; }
     QCheckBox::indicator:checked { background: #F59E0B; border: 1px solid #D97706; }
@@ -99,6 +106,12 @@ STYLE_BTN_OUTLINE = """
 class Modul2Sediment(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Menambahkan parameter 'file' untuk menyimpan state jalur file yang sedang aktif
+        self.tab_data = {
+            'sediment': {'df': None, 'file': None},
+            'mangrove': {'df': None, 'file': None},
+            'submerged': {'df': None, 'file': None}
+        }
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -118,12 +131,9 @@ class Modul2Sediment(QWidget):
         head.addWidget(d)
         main_layout.addLayout(head)
 
-        # UI BUG FIX: Splitter Transparan Tanpa Batas Garis Tebal
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
-        splitter.setStyleSheet("""
-            QSplitter::handle { background-color: transparent; height: 10px; }
-        """)
+        splitter.setStyleSheet("QSplitter::handle { background-color: transparent; height: 10px; }")
 
         # --- 1. TOP WIDGET (VISUALIZATION - MASSIVE SIZE) ---
         self.lbl_sed_viz = QLabel("Plot Spasial (Heatmap) akan di-render dalam mode resolusi tinggi di sini.")
@@ -145,17 +155,14 @@ class Modul2Sediment(QWidget):
             QTabBar::tab:selected { background: #1E293B; color: #F59E0B; border-bottom: 3px solid #F59E0B;}
         """)
         
-        # Panel 1: Sediment Dasar
         self.tab_sediment = QWidget()
         self.build_tab_ui(self.tab_sediment, 'sediment', "📂 Load Survei Sedimen (.csv/.xlsx)", True)
         self.tabs.addTab(self.tab_sediment, "1. Sedimen (Nikuradse)")
 
-        # Panel 2: Mangrove (Baptist)
         self.tab_mangrove = QWidget()
         self.build_tab_ui(self.tab_mangrove, 'mangrove', "🌲 Load Vegetasi Mangrove (.csv/.xlsx)", False)
         self.tabs.addTab(self.tab_mangrove, "2. Mangrove (Trachytope)")
 
-        # Panel 3: Submerged Vegetation
         self.tab_submerged = QWidget()
         self.build_tab_ui(self.tab_submerged, 'submerged', "🪸 Load Terumbu Karang/Lamun (.csv/.xlsx)", False)
         self.tabs.addTab(self.tab_submerged, "3. Submerged Ecosystem")
@@ -178,15 +185,9 @@ class Modul2Sediment(QWidget):
         
         splitter.addWidget(bot_wrap)
         
-        # UI BUG FIX: Memberikan 60% proporsi layar murni untuk gambar Heatmap
-        splitter.setSizes([600, 300, 100])
+        # Proporsi Splitter: Heatmap mendapat 60% layar
+        splitter.setSizes([600, 350, 100])
         main_layout.addWidget(splitter)
-        
-        self.tab_data = {
-            'sediment': {'df': None},
-            'mangrove': {'df': None},
-            'submerged': {'df': None}
-        }
 
     def build_tab_ui(self, parent_widget: QWidget, mode_type: str, btn_text: str, show_ks: bool) -> None:
         layout = QHBoxLayout(parent_widget)
@@ -218,23 +219,40 @@ class Modul2Sediment(QWidget):
         
         # Col 2: Mapper Configuration
         c2 = QVBoxLayout()
-        grp2 = QGroupBox("B. Pemetaan Spasial Delaunay")
+        grp2 = QGroupBox("B. Konfigurasi Pemetaan Spasial")
         
-        # UI BUG FIX: Merenggangkan Form Layout agar teks "Kolom X" bernapas lega
         g2 = QFormLayout(grp2)
-        g2.setHorizontalSpacing(20) # Jarak antara teks Label dan ComboBox
-        g2.setVerticalSpacing(16)   # Jarak antar baris (Atas-Bawah)
+        g2.setHorizontalSpacing(20) 
+        g2.setVerticalSpacing(16)   
         
-        # Injeksi Style Label Lokal Khusus untuk Form ini
         label_style = "QLabel { color: #CBD5E1; font-weight: bold; font-size: 13px; }"
+        
+        # [NEW INJECTION]: Sheet Selector & Header Row untuk Parsing Excel Akurat
+        cmb_sheet = QComboBox()
+        cmb_sheet.setEnabled(False)
+        cmb_sheet.addItem("Membutuhkan File Excel...")
+        
+        spn_header = QSpinBox()
+        spn_header.setRange(0, 50)
+        spn_header.setValue(0)
+        spn_header.setToolTip("Jika kolom 'Unnamed' muncul, naikkan angka ini untuk mencari baris judul (Header) yang tepat.")
         
         cmb_x = QComboBox()
         cmb_y = QComboBox()
         cmb_val = QComboBox()
         
+        l_sheet = QLabel("Pilih Sheet (Excel):"); l_sheet.setStyleSheet(label_style)
+        l_hdr = QLabel("Baris Header (0-idx):"); l_hdr.setStyleSheet(label_style)
         l_x = QLabel("Kolom X (Lon):"); l_x.setStyleSheet(label_style)
         l_y = QLabel("Kolom Y (Lat):"); l_y.setStyleSheet(label_style)
         l_z = QLabel("Kolom Target:"); l_z.setStyleSheet(label_style)
+        
+        g2.addRow(l_sheet, cmb_sheet)
+        g2.addRow(l_hdr, spn_header)
+        
+        # Divider Line
+        line = QFrame(); line.setFrameShape(QFrame.Shape.HLine); line.setStyleSheet("background-color: #334155;")
+        g2.addRow(line)
         
         g2.addRow(l_x, cmb_x)
         g2.addRow(l_y, cmb_y)
@@ -255,46 +273,110 @@ class Modul2Sediment(QWidget):
         c2.addWidget(grp2)
         layout.addLayout(c2, stretch=6)
         
+        # Simpan reference ke memori instans agar bisa dipanggil fungsi lain
+        setattr(self, f"cmb_sheet_{mode_type}", cmb_sheet)
+        setattr(self, f"spn_header_{mode_type}", spn_header)
         setattr(self, f"cmb_x_{mode_type}", cmb_x)
         setattr(self, f"cmb_y_{mode_type}", cmb_y)
         setattr(self, f"cmb_v_{mode_type}", cmb_val)
         setattr(self, f"chk_ks_{mode_type}", chk_ks)
         setattr(self, f"btn_run_{mode_type}", btn_run)
+        
+        # Menyambungkan Sinyal Perubahan Sheet/Header
+        cmb_sheet.currentTextChanged.connect(lambda t, m=mode_type: self.on_sheet_or_header_changed(m))
+        spn_header.valueChanged.connect(lambda v, m=mode_type: self.on_sheet_or_header_changed(m))
 
     def load_file(self, mode_type: str) -> None:
         p, _ = QFileDialog.getOpenFileName(self, "Buka Data Spasial (Survei Lapangan)", "", "Data Spreadsheet (*.csv *.xlsx)")
         if not p: return
         
+        self.tab_data[mode_type]['file'] = p
+        cmb_sheet = getattr(self, f"cmb_sheet_{mode_type}")
+        spn_header = getattr(self, f"spn_header_{mode_type}")
+        
+        # Reset nilai SpinBox Header ke 0 setiap kali muat file baru
+        spn_header.blockSignals(True)
+        spn_header.setValue(0)
+        spn_header.blockSignals(False)
+        
         try:
-            df = pd.read_excel(p) if p.endswith('.xlsx') else pd.read_csv(p)
+            if p.endswith('.xlsx'):
+                # Baca meta-data Excel (Sheet Names)
+                xl = pd.ExcelFile(p)
+                cmb_sheet.blockSignals(True)
+                cmb_sheet.clear()
+                cmb_sheet.addItems(xl.sheet_names)
+                cmb_sheet.setEnabled(True)
+                cmb_sheet.blockSignals(False)
+                
+                # Load sheet pertama sebagai default
+                self.load_sheet_data(mode_type, xl.sheet_names[0], 0)
+            else:
+                cmb_sheet.blockSignals(True)
+                cmb_sheet.clear()
+                cmb_sheet.addItem("CSV File Aktif")
+                cmb_sheet.setEnabled(False)
+                cmb_sheet.blockSignals(False)
+                
+                self.load_sheet_data(mode_type, None, 0)
+                
+        except Exception as e:
+            logger.error(f"[FATAL] Gagal menginisiasi file: {str(e)}\n{traceback.format_exc()}")
+            self.log_sed.append(f"❌ Gagal memuat file untuk {mode_type}: {str(e)}")
+            QMessageBox.critical(self, "I/O Error", f"Gagal membaca file spreadsheet: {str(e)}")
+
+    def on_sheet_or_header_changed(self, mode_type: str) -> None:
+        """Triggered ketika user mengganti sheet aktif atau menggeser nilai baris header."""
+        cmb_sheet = getattr(self, f"cmb_sheet_{mode_type}")
+        spn_header = getattr(self, f"spn_header_{mode_type}")
+        
+        sheet = cmb_sheet.currentText()
+        header_row = spn_header.value()
+        
+        self.load_sheet_data(mode_type, sheet, header_row)
+
+    def load_sheet_data(self, mode_type: str, sheet_name: str, header_row: int) -> None:
+        """Membaca isi DataFrame spesifik berdasarkan sheet dan baris judul (header)."""
+        p = self.tab_data[mode_type].get('file')
+        if not p: return
+        
+        try:
+            # Gunakan header_row agar Pandas tidak membaca judul proyek sebagai nama kolom
+            if p.endswith('.xlsx') and sheet_name and sheet_name != "CSV File Aktif":
+                df = pd.read_excel(p, sheet_name=sheet_name, header=header_row)
+            else:
+                df = pd.read_csv(p, header=header_row)
+                
             self.tab_data[mode_type]['df'] = df
-            cols = list(df.columns)
+            cols = [str(c) for c in df.columns]
             
             cmb_x = getattr(self, f"cmb_x_{mode_type}")
             cmb_y = getattr(self, f"cmb_y_{mode_type}")
             cmb_v = getattr(self, f"cmb_v_{mode_type}")
             
-            cmb_x.clear()
-            cmb_y.clear()
-            cmb_v.clear()
+            # Blokir sinyal sementara agar Dropdown tidak error saat dikosongkan
+            cmb_x.blockSignals(True); cmb_y.blockSignals(True); cmb_v.blockSignals(True)
+            cmb_x.clear(); cmb_y.clear(); cmb_v.clear()
             
             cmb_x.addItems(cols)
             cmb_y.addItems(cols)
             cmb_v.addItems(cols)
             
+            cmb_x.blockSignals(False); cmb_y.blockSignals(False); cmb_v.blockSignals(False)
+            
+            # Auto-Detect kecerdasan buatan untuk menebak kolom
             for c in cols:
                 cl = str(c).lower()
                 if 'lon' in cl or 'x' in cl or 'easting' in cl: cmb_x.setCurrentText(c)
                 if 'lat' in cl or 'y' in cl or 'northing' in cl: cmb_y.setCurrentText(c)
-                if 'd50' in cl or 'sedimen' in cl or 'val' in cl or 'friction' in cl or 'dens' in cl or 'z' in cl: 
+                if 'd50' in cl or 'sedimen' in cl or 'val' in cl or 'friction' in cl or 'dens' in cl or 'z' in cl or 'target' in cl: 
                     cmb_v.setCurrentText(c)
                 
-            self.log_sed.append(f"[SYSTEM] Dataset {os.path.basename(p)} berhasil diload. Total data: {len(df)} titik.")
+            sht_log = f"Sheet '{sheet_name}'" if sheet_name else "CSV"
+            self.log_sed.append(f"[SYSTEM] {sht_log} dengan Header Baris ke-{header_row} diload. Data terekstrak: {len(df)} titik.")
             
         except Exception as e:
-            logger.error(f"[FATAL] Gagal membaca dataset spasial: {str(e)}\n{traceback.format_exc()}")
-            self.log_sed.append(f"❌ Gagal memuat file untuk {mode_type}: {str(e)}")
-            QMessageBox.critical(self, "I/O Error", f"Gagal membaca file spreadsheet: {str(e)}")
+            logger.warning(f"Gagal memuat subset data saat mengganti parameter sheet/header: {e}")
 
     def run_interpolation(self, mode_type: str) -> None:
         if hasattr(self, 'sed_w') and self.sed_w.isRunning():
@@ -317,6 +399,11 @@ class Modul2Sediment(QWidget):
         col_y = cmb_y.currentText()
         col_val = cmb_v.currentText()
         
+        # Validasi Unnamed Guard
+        if 'unnamed' in col_x.lower() or 'unnamed' in col_y.lower():
+            QMessageBox.warning(self, "Kolom Tidak Valid", "Terdeteksi kolom 'Unnamed'. Silakan naikkan 'Baris Header (0-idx)' hingga nama kolom asli Anda muncul di dropdown.")
+            return
+            
         if not col_x or not col_y or not col_val:
             QMessageBox.critical(self, "Validasi Gagal", "Konfigurasi kolom X, Y, dan Target tidak lengkap.")
             return
@@ -338,7 +425,6 @@ class Modul2Sediment(QWidget):
         
         def update_img(img_path: str):
             if img_path and os.path.exists(img_path):
-                # Merender gambar dengan High Quality Smooth Transformation
                 pixmap = QPixmap(img_path).scaled(self.lbl_sed_viz.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                 self.lbl_sed_viz.setPixmap(pixmap)
                 
