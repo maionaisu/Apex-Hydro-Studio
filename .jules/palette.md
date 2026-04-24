@@ -1,0 +1,3 @@
+## 2024-05-18 - Screen Reader Accessibility for Emojis in PyQt6
+**Learning:** Screen readers often struggle to interpret emojis embedded in UI elements like `QPushButton`, `QComboBox`, or `QLabel`. When a screen reader encounters an emoji, it may read out a confusing or irrelevant description, or nothing at all, which breaks accessibility.
+**Action:** When adding emojis to UI elements for visual polish, always provide a clean text equivalent using `setAccessibleName()`. Additionally, use `setToolTip()` to provide visual context for sighted users. This ensures the interface remains accessible and informative for all users.

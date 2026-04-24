@@ -176,6 +176,8 @@ class ApexHydroStudioApp(QMainWindow):
         
         # [NEW INJECTION]: HPC Compute Backend Selector
         self.cmb_backend = QComboBox()
+        self.cmb_backend.setAccessibleName("Compute Backend Selector")
+        self.cmb_backend.setToolTip("Select the compute backend (CPU, CUDA, or HYBRID)")
         self.cmb_backend.addItems(["🖥️ CPU (Numba LLVM)", "🚀 CUDA (GPU Only)", "🔥 HYBRID (CPU+GPU)"])
         self.cmb_backend.setStyleSheet("""
             QComboBox { background-color: #0F172A; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px; color: #38BDF8; font-size: 11px; font-weight: bold; margin-top: 10px; }
@@ -193,6 +195,9 @@ class ApexHydroStudioApp(QMainWindow):
         self.nav_btns = []
         labels = ["⛆  ERA5 Synthesizer", "▤  Sediment & Mangrove", "🌊  Tidal Harmonix", 
                   "⚙  DIMR Orchestrator", "🚀  Engine Execution", "📊  Post-Processing"]
+
+        clean_labels = ["ERA5 Synthesizer", "Sediment and Mangrove", "Tidal Harmonix",
+                        "DIMR Orchestrator", "Engine Execution", "Post-Processing"]
                   
         nav_btn_style = """
             QPushButton {
@@ -204,6 +209,8 @@ class ApexHydroStudioApp(QMainWindow):
                   
         for i, text in enumerate(labels):
             btn = QPushButton(text)
+            btn.setAccessibleName(clean_labels[i])
+            btn.setToolTip(f"Navigate to {clean_labels[i]}")
             btn.setStyleSheet(nav_btn_style)
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn.clicked.connect(lambda checked, idx=i: self.switch_page(idx))
@@ -212,6 +219,8 @@ class ApexHydroStudioApp(QMainWindow):
 
         side_layout.addSpacing(20)
         self.btn_tips = QPushButton("💡 Tips & Guide")
+        self.btn_tips.setAccessibleName("Tips and Guide")
+        self.btn_tips.setToolTip("Show interactive tour overlay")
         self.btn_tips.setStyleSheet("""
             QPushButton { background-color: transparent; color: #38BDF8; border: 1px solid #0284C7; border-radius: 6px; padding: 8px; font-weight: bold; }
             QPushButton:hover { background-color: #0C4A6E; }
@@ -267,15 +276,17 @@ class ApexHydroStudioApp(QMainWindow):
         self.lbl_state_tide = QLabel("Bnd: None")
         
         indicators = [
-            ("🌊", self.lbl_state_he),
-            ("⏬", self.lbl_state_doc),
-            ("🪨", self.lbl_state_sed),
-            ("⏱", self.lbl_state_tide)
+            ("🌊", self.lbl_state_he, "Wave State Indicator", "Current wave conditions"),
+            ("⏬", self.lbl_state_doc, "Depth of Closure Indicator", "Current depth of closure"),
+            ("🪨", self.lbl_state_sed, "Sediment Indicator", "Sediment state lock"),
+            ("⏱", self.lbl_state_tide, "Tidal Boundary Indicator", "Tidal boundary status")
         ]
         
-        for i, (icon, lbl) in enumerate(indicators):
+        for i, (icon, lbl, acc_name, tooltip) in enumerate(indicators):
             lbl.setStyleSheet("color: #64748B; font-size: 11px; font-weight: bold; border: none;")
             icon_lbl = QLabel(icon)
+            icon_lbl.setAccessibleName(acc_name)
+            icon_lbl.setToolTip(tooltip)
             icon_lbl.setStyleSheet("font-size: 14px; border: none;")
             ind_grid.addWidget(icon_lbl, i//2, (i%2)*2)
             ind_grid.addWidget(lbl, i//2, (i%2)*2 + 1)
