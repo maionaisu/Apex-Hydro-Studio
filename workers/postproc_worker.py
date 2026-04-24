@@ -62,3 +62,38 @@ class PostProcAnimationWorker(QThread):
             
             self.log_signal.emit(f"❌ Error Rendering Frame T={self.idx}: {str(e)}")
             self.finished_signal.emit(False)
+
+class ValidationWorker(QThread):
+    """
+    [TIER-0] Background Worker for Time-Series Point Validation.
+    Executes Nearest Neighbor search and Time Interpolation in the background.
+    """
+    log_signal = pyqtSignal(str)
+    result_signal = pyqtSignal(dict)
+    finished_signal = pyqtSignal(bool)
+
+    def __init__(self, nc_path: str, csv_path: str, target_var: str, lat: float, lon: float, epsg: str, out_dir: str):
+        super().__init__()
+        self.nc = os.path.abspath(nc_path)
+        self.csv = os.path.abspath(csv_path)
+        self.var = target_var
+        self.lat = lat
+        self.lon = lon
+        self.epsg = epsg
+        self.out = os.path.abspath(out_dir)
+
+    def run(self) -> None:
+        try:
+            self.log_signal.emit(f"■ Mengeksekusi Point-Extraction dan penyelarasan waktu pada titik (Lat: {self.lat}, Lon: {self.lon})...")
+            
+            res = PostProcEngine.run_point_validation(self.nc, self.csv, self.var, self.lat, self.lon, self.epsg, self.out)
+            
+            self.log_signal.emit(f"✅ Ekstraksi selesai. Jarak stasiun terdekat ke node mesh: {res['dist']:.2f} m")
+            self.result_signal.emit(res)
+            self.finished_signal.emit(True)
+            
+        except Exception as e:
+            error_details = f"{str(e)}\n{traceback.format_exc()}"
+            logger.error(f"[FATAL] Validation Worker Error: {error_details}")
+            self.log_signal.emit(f"❌ Error Validasi: {str(e)}")
+            self.finished_signal.emit(False)
