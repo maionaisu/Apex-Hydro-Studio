@@ -152,3 +152,148 @@ class PostProcEngine:
             error_msg = f"[FATAL] Kegagalan Post-Processing pada file {os.path.basename(nc_path)}: {str(e)}\n{traceback.format_exc()}"
             logger.error(error_msg)
             raise RuntimeError(f"Gagal me-render NetCDF overlay: {str(e)}") from e
+
+    @staticmethod
+    def run_point_validation(nc_path: str, csv_path: str, target_var: str, lat: float, lon: float, epsg: str, out_dir: str) -> dict:
+        """
+        Mengekstrak time-series NetCDF pada titik stasiun terdekat (Nearest Neighbor),
+        melakukan sinkronisasi waktu (merge_asof) dengan data CSV Observasi,
+        menghitung matriks error (RMSE, Bias, R2), dan merender Plot Overlay.
+        """
+        if not HAS_XARRAY: 
+            raise ImportError("Library 'xarray' dan 'pandas' diperlukan untuk validasi.")
+            
+        os.makedirs(out_dir, exist_ok=True)
+        import pandas as pd
+        
+        try:
+            logger.info(f"[VALIDATION] Memulai kalibrasi titik. Model: {nc_path} | Obs: {csv_path}")
+            
+            # 1. Mapping Variabel UI ke Nama Kolom Asli
+            var_map = {
+                'Hsig (Tinggi Gelombang)': ('Hsig', 'Hs', 'm'),
+                'Tp (Periode Puncak)': ('Tp', 'Tp', 's')
+            }
+            nc_var, csv_var, unit = var_map.get(target_var, ('Hsig', 'Hs', 'm'))
+            
+            # 2. Baca CSV Observasi (Ground Truth)
+            df_obs = pd.read_csv(csv_path)
+            # Pastikan kolom timestamp dibaca sebagai Datetime naive (tanpa timezone)
+            df_obs['timestamp'] = pd.to_datetime(df_obs['timestamp']).dt.tz_localize(None)
+            df_obs = df_obs[['timestamp', csv_var]].dropna().sort_values('timestamp')
+            
+            # 3. Baca NetCDF Model dan Transformasi Koordinat Stasiun
+            tr = Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
+            target_x, target_y = tr.transform(lon, lat)
+            
+            with xr.open_dataset(nc_path) as ds:
+                if nc_var not in ds:
+                    raise KeyError(f"Variabel Model '{nc_var}' tidak ditemukan di NetCDF.")
+                    
+                # Deteksi Topologi Grid
+                if 'mesh2d_face_x' in ds:
+                    ux, uy = ds['mesh2d_face_x'].values, ds['mesh2d_face_y'].values
+                elif 'x' in ds and 'y' in ds:
+                    X, Y = np.meshgrid(ds.x.values, ds.y.values)
+                    ux, uy = X.flatten(), Y.flatten()
+                else:
+                    raise KeyError("Geometri mesh tidak terdeteksi untuk ekstraksi titik.")
+                
+                # 4. Nearest Neighbor Extraction (Titik terdekat)
+                dists = np.hypot(ux - target_x, uy - target_y)
+                min_idx = np.nanargmin(dists)
+                closest_dist = dists[min_idx]
+                
+                logger.info(f"[VALIDATION] Titik terdekat ditemukan pada jarak {closest_dist:.2f} meter dari koordinat input.")
+                
+                # Ekstrak rentetan waktu
+                model_times = pd.to_datetime(ds['time'].values).tz_localize(None)
+                
+                # Reshape array ke 2D (Time, Space) untuk mengekstrak titik spesifik secara konsisten
+                val_array = ds[nc_var].values
+                val_array_2d = val_array.reshape(len(model_times), -1)
+                model_vals = val_array_2d[:, min_idx]
+                
+                df_model = pd.DataFrame({'timestamp': model_times, 'model_val': model_vals})
+                df_model = df_model.dropna().sort_values('timestamp')
+                
+            # 5. Sinkronisasi Waktu (Merge Asof - Mencari waktu beririsan terdekat toleransi 2 jam)
+            df_merge = pd.merge_asof(
+                df_obs, df_model, 
+                on='timestamp', direction='nearest', 
+                tolerance=pd.Timedelta('2h')
+            ).dropna()
+            
+            if df_merge.empty:
+                raise ValueError("Tidak ada irisan waktu (Timestamp) yang cocok antara Model ERA5 dan Data Wave Gauge Observasi.")
+                
+            y_obs = df_merge[csv_var].values
+            y_mod = df_merge['model_val'].values
+            times = df_merge['timestamp'].values
+            
+            # 6. Komputasi Statistik Matematika
+            rmse = np.sqrt(np.mean((y_mod - y_obs)**2))
+            bias = np.mean(y_mod - y_obs)
+            # Mencegah pembagian nol pada korelasi
+            r2 = 0.0
+            if np.std(y_obs) > 0 and np.std(y_mod) > 0:
+                r2 = np.corrcoef(y_obs, y_mod)[0, 1] ** 2
+                
+            # 7. Render Plot Validasi (Enterprise Fintech Slate Style)
+            fig = None
+            out_plot = os.path.join(out_dir, f"Validation_{csv_var}_Plot.png")
+            
+            try:
+                fig = plt.figure(figsize=(12, 6))
+                fig.patch.set_facecolor('#1E2128') # Sesuai QGroupBox pane
+                
+                # Subplot 1: Time Series Overlay
+                ax1 = plt.subplot(1, 2, 1)
+                ax1.set_facecolor('#0F172A')
+                ax1.plot(times, y_obs, 'o-', color='#F7C159', label='Observasi (Wave Gauge)', linewidth=2, markersize=4)
+                ax1.plot(times, y_mod, '-', color='#38BDF8', label='Simulasi (D-WAVES)', linewidth=2.5)
+                ax1.set_title(f"Time Series Overlay - {nc_var}", color='#FFFFFF', fontweight='bold')
+                ax1.set_ylabel(f"{nc_var} ({unit})", color='#9CA3AF')
+                ax1.tick_params(colors='#9CA3AF', rotation=45)
+                ax1.grid(color='#3A3F4A', linestyle='--', alpha=0.7)
+                ax1.legend(facecolor='#1E2128', edgecolor='#3A3F4A', labelcolor='white')
+                for spine in ax1.spines.values(): spine.set_edgecolor('#3A3F4A')
+                
+                # Subplot 2: Scatter Plot
+                ax2 = plt.subplot(1, 2, 2)
+                ax2.set_facecolor('#0F172A')
+                ax2.scatter(y_obs, y_mod, color='#42E695', s=30, alpha=0.8, edgecolor='#0F172A')
+                
+                # Garis Identitas (1:1 Line)
+                min_val = min(np.min(y_obs), np.min(y_mod))
+                max_val = max(np.max(y_obs), np.max(y_mod))
+                ax2.plot([min_val, max_val], [min_val, max_val], 'r--', label='1:1 Perfect Match', alpha=0.7)
+                
+                ax2.set_title(f"Scatter Plot (R² = {r2:.3f})", color='#FFFFFF', fontweight='bold')
+                ax2.set_xlabel(f"Observasi {nc_var}", color='#9CA3AF')
+                ax2.set_ylabel(f"Model {nc_var}", color='#9CA3AF')
+                ax2.tick_params(colors='#9CA3AF')
+                ax2.grid(color='#3A3F4A', linestyle='--', alpha=0.7)
+                ax2.legend(facecolor='#1E2128', edgecolor='#3A3F4A', labelcolor='white')
+                for spine in ax2.spines.values(): spine.set_edgecolor('#3A3F4A')
+                
+                plt.tight_layout()
+                plt.savefig(out_plot, dpi=150, bbox_inches='tight')
+                
+            finally:
+                if fig is not None:
+                    plt.close(fig)
+                    
+            logger.info(f"[VALIDATION] Komputasi sukses. RMSE: {rmse:.3f}, Bias: {bias:.3f}, R2: {r2:.3f}")
+            return {
+                'rmse': rmse,
+                'bias': bias,
+                'r2': r2,
+                'plot_path': out_plot,
+                'dist': closest_dist
+            }
+            
+        except Exception as e:
+            error_msg = f"[FATAL] Kegagalan Ekstraksi/Validasi Point: {str(e)}\n{traceback.format_exc()}"
+            logger.error(error_msg)
+            raise RuntimeError(f"Gagal melakukan validasi data: {str(e)}") from e
