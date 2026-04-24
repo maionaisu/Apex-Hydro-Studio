@@ -23,7 +23,7 @@ class ERA5Extractor:
     Upgraded with:
     1. Single-Pass Dask Computation (O(1) Pass instead of O(3N) Passes).
     2. Correct Circular Mean Mathematics for Wave Direction (Trigonometric).
-    3. Strict NaN & Fallback Handling.
+    3. Strict NaN & Fallback Handling (Anti-NaN Guard).
     """
     
     @staticmethod
@@ -76,11 +76,15 @@ class ERA5Extractor:
                 
                 hs_val, tp_val, sin_val, cos_val = computed_results
                 
-                # --- TAHAP 3: Finalisasi Nilai ---
-                hs = float(hs_val) if hs_val is not None else 1.5
-                tp = float(tp_val) if tp_val is not None else 8.0
+                # --- TAHAP 3: Finalisasi Nilai dengan [BUG-FIX] Anti-NaN Guard ---
+                def safe_float(val, default):
+                    if val is None or np.isnan(val): return default
+                    return float(val)
+
+                hs = safe_float(hs_val, 1.5)
+                tp = safe_float(tp_val, 8.0)
                 
-                if sin_val is not None and cos_val is not None:
+                if sin_val is not None and cos_val is not None and not np.isnan(sin_val) and not np.isnan(cos_val):
                     # Mengonversi vektor Trigonometri kembali ke Derajat (0 - 360)
                     dir_mean_rad = np.arctan2(sin_val, cos_val)
                     dir_ = float((np.degrees(dir_mean_rad) + 360) % 360)
