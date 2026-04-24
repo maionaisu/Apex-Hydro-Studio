@@ -17,7 +17,6 @@ class DepthOfClosure2DWorker(QThread):
     log_signal = pyqtSignal(str)
     plot_signal = pyqtSignal(str)
     doc_val_signal = pyqtSignal(float)
-    # FIX: Menambahkan sinyal finished untuk standardisasi unlock UI
     finished_signal = pyqtSignal(bool)
 
     def __init__(self, bathy_file, transect_pts, he, epsg):
@@ -51,7 +50,7 @@ class DepthOfClosure2DWorker(QThread):
             self.finished_signal.emit(True)
             
         except Exception as e:
-            # FIX: Memisahkan UI log dengan System log
+            # Memisahkan UI log dengan System log untuk kemudahan debugging
             error_details = f"{str(e)}\n{traceback.format_exc()}"
             logger.error(f"[FATAL] DoC Worker Error: {error_details}")
             
@@ -64,6 +63,7 @@ class ApexDIMROrchestratorWorker(QThread):
     """
     [TIER-0] The Master Background Worker.
     Orchestrates MeshKernel Adaptive Refinement, Delft3D-FM, and SWAN coupling operations.
+    Telah di-sinkronisasikan secara absolut dengan DECOUPLED BUILD MODE di Engine.
     """
     log_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(int)
@@ -77,9 +77,17 @@ class ApexDIMROrchestratorWorker(QThread):
 
     def run(self) -> None:
         try:
-            self.log_signal.emit("■ Inisiasi Pipeline MeshKernel (Unstructured Geometry)...")
+            # Sinkronisasi Pesan UI Berdasarkan Mode yang Dipilih
+            b_mode = self.params.get('build_mode', 'coupled')
             
-            # Eksekusi Master Orchestrator (Aman dari pembekuan GUI karena berjalan di QThread terpisah)
+            if b_mode == 'dflow_only':
+                self.log_signal.emit("■ Inisiasi Pipeline MeshKernel untuk D-FLOW (MDU Standalone)...")
+            elif b_mode == 'dwaves_only':
+                self.log_signal.emit("■ Inisiasi Pipeline MeshKernel untuk D-WAVES (MDW Standalone)...")
+            else:
+                self.log_signal.emit("■ Inisiasi Pipeline MeshKernel (Full Coupling DIMR)...")
+            
+            # Eksekusi Master Orchestrator (Aman dari pembekuan GUI)
             MeshBuilderEngine.build_dimr_orchestration(
                 params=self.params,
                 global_state=self.state,
@@ -88,8 +96,16 @@ class ApexDIMROrchestratorWorker(QThread):
                 preview_cb=self.preview_signal.emit
             )
             
-            logger.info("[DIMR ORCHESTRATOR] Seluruh model (MDU, MDW, XML, EXT) berhasil dirakit.")
-            self.finished_signal.emit("Success", True)
+            # Pelaporan Status Akhir yang Akurat
+            if b_mode == 'dflow_only':
+                msg = "Arsitektur D-FLOW (MDU & Ext) berhasil dirakit."
+            elif b_mode == 'dwaves_only':
+                msg = "Arsitektur D-WAVES (MDW) berhasil dirakit."
+            else:
+                msg = "Seluruh model Coupling (MDU, MDW, XML, EXT) berhasil dirakit."
+                
+            logger.info(f"[DIMR ORCHESTRATOR] {msg}")
+            self.finished_signal.emit(msg, True)
             
         except ImportError as e:
             logger.error(f"[FATAL] Missing Environment Library: {str(e)}")
@@ -97,7 +113,7 @@ class ApexDIMROrchestratorWorker(QThread):
             self.finished_signal.emit("Error", False)
             
         except Exception as e:
-            # FIX: Traceback panjang disimpan di logger, sementara UI menerima inti pesan
+            # Traceback panjang disimpan di logger, sementara UI menerima inti pesan
             error_details = f"{str(e)}\n{traceback.format_exc()}"
             logger.error(f"[FATAL] DIMR Orchestrator Gagal: {error_details}")
             
