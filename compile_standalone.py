@@ -1,7 +1,7 @@
 # ==============================================================================
-# APEX NEXUS TIER-0: ENTERPRISE STANDALONE COMPILER (PYINSTALLER)
+# APEX NEXUS TIER-0: ENTERPRISE COMPILER (PYINSTALLER)
 # TARGET: ApexHydroStudio/main.py
-# CAPABILITY: --onefile Standalone, Numba LLVM, & QtWebEngine Auto-Discovery
+# CAPABILITY: --onedir Enterprise, Numba LLVM, & QtWebEngine Auto-Discovery
 # ==============================================================================
 import os
 import sys
@@ -21,7 +21,7 @@ if sys.version_info < (3, 10):
     sys.exit(1)
 
 print("=====================================================")
-print(" ⚡ APEX HYDRO-STUDIO — STANDALONE COMPILER v17.0 ⚡ ")
+print(" ⚡ APEX HYDRO-STUDIO — ENTERPRISE COMPILER v18.0 ⚡ ")
 print("=====================================================")
 
 REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
@@ -49,15 +49,15 @@ for folder in ['build', 'dist', 'build_temp', '__pycache__']:
         shutil.rmtree(fp, ignore_errors=True)
 
 # ── 2. TIER-0 RUNTIME HOOK (QtWebEngine Process Locator) ──────────────────────
-# FIX ABSOLUT UNTUK --ONEFILE: Memaksa QtWebEngine mencari lokasinya di folder Temp
+# FIX ABSOLUT: Memaksa QtWebEngine mencari lokasinya di folder sistem bawaan
 hook_path = os.path.join(REPO_ROOT, '_rthook_apex.py')
 with open(hook_path, 'w') as hf:
     hf.write("""import os, sys
 if hasattr(sys, '_MEIPASS'):
-    # Matikan sandbox Chromium agar tidak berkonflik dengan permission Windows Temp
+    # Matikan sandbox Chromium agar tidak berkonflik dengan permission OS
     os.environ['QTWEBENGINE_DISABLE_SANDBOX'] = '1'
     
-    # Deteksi lokasi QtWebEngineProcess.exe di ekstrak temp PyInstaller
+    # Deteksi lokasi QtWebEngineProcess.exe di ekstrak / folder _internal PyInstaller
     possible_paths = [
         os.path.join(sys._MEIPASS, 'PyQt6', 'Qt6', 'bin', 'QtWebEngineProcess.exe'),
         os.path.join(sys._MEIPASS, 'PyQt6', 'QtWebEngineProcess.exe'),
@@ -105,12 +105,12 @@ fiona_hidden    = safe_collect_mods('fiona')
 gpd_hidden      = safe_collect_mods('geopandas')
 xarray_hidden   = safe_collect_mods('xarray')
 
-# ── 4. BUILD ARGUMENTS (--ONEFILE STANDALONE) ────────────────────────────────
+# ── 4. BUILD ARGUMENTS (--ONEDIR ENTERPRISE) ─────────────────────────────────
 SEP = os.pathsep
 
 pyinstaller_args = [
     SCRIPT,
-    '--onefile',         # [UBAH UTAMA]: Menjadikan 1 file .exe tunggal murni
+    '--onedir',          # [UBAH UTAMA]: Mode Folder untuk Loading App secara INSTAN (0 detik)
     '--windowed',        # Hilangkan console hitam (CMD) di belakang GUI
     '--name=ApexHydroStudio',
     f'--runtime-hook={hook_path}',
@@ -209,15 +209,17 @@ if os.path.exists(logo_ico):
     pyinstaller_args.append(f'--icon={logo_ico}')
 
 # ── 5. EXECUTE BUILD ─────────────────────────────────────────────────────────
-print("\n[*] Mengeksekusi PyInstaller --onefile ... (Estimasi: 5-15 menit)\n")
+print("\n[*] Mengeksekusi PyInstaller --onedir (Mode Folder)... (Estimasi: 5-15 menit)\n")
 try:
     PyInstaller.__main__.run(pyinstaller_args)
     print("\n" + "="*55)
-    print(" ✅ KOMPILASI STANDALONE SELESAI!")
-    print(" -> File aplikasi : dist/ApexHydroStudio.exe")
-    print(" -> CATATAN: Karena ini adalah aplikasi raksasa (Heavy Standalone),")
-    print("    proses membuka aplikasi pertama kali (Double Click)")
-    print("    membutuhkan waktu 15 - 45 detik untuk mengekstrak memori.")
+    print(" ✅ KOMPILASI ENTERPRISE SELESAI!")
+    print(" -> Folder aplikasi : dist/ApexHydroStudio/")
+    print(" -> File Eksekusi   : dist/ApexHydroStudio/ApexHydroStudio.exe")
+    print(" -> CATATAN: Aplikasi menggunakan mode Folder (--onedir).")
+    print("    Saat diklik ganda, aplikasi akan terbuka secara INSTAN (0 detik)")
+    print("    tanpa perlu melakukan ekstraksi memori. Bawa folder ini (atau di-zip)")
+    print("    saat presentasi dosen!")
     print("="*55)
 except Exception as e:
     print(f"\n❌ [FATAL] Kompilasi gagal: {e}")
