@@ -2,6 +2,7 @@
 # APEX NEXUS TIER-0: DELFT3D-FM DIMR ORCHESTRATOR & MESH BUILDER
 # ==============================================================================
 import os
+import re
 import math
 import logging
 import traceback
@@ -32,7 +33,6 @@ class DepthProfileEngine:
     def calculate_doc_profile(bathy_file: str, transect_pts: list, doc_depth: float, epsg: str) -> str:
         """
         Kalkulasi 2D cross-section Depth of Closure menggunakan transek.
-        [UPGRADE]: Menambahkan Bird's Eye View (Spatial Map) + DoC Point Locator.
         Aman terhadap memory leak Matplotlib.
         """
         if not os.path.exists(bathy_file):
@@ -65,7 +65,7 @@ class DepthProfileEngine:
                 
             d_line = np.linspace(0, dists[-1], num_pts)
             
-            # [BARU] MENCARI TITIK SPASIAL DoC TEPAT DI PETA
+            # [MENCARI TITIK SPASIAL DoC TEPAT DI PETA]
             idx_doc = np.where(zl <= doc_depth)[0]
             doc_found = len(idx_doc) > 0
             if doc_found:
@@ -73,7 +73,7 @@ class DepthProfileEngine:
                 doc_y_pt = y_line[idx_doc[0]]
                 doc_dist = d_line[idx_doc[0]]
             
-            # 4. Rendering Visualization (DUAL VIEW: BIRD'S EYE & PROFILE)
+            # 4. Rendering Visualization (DUAL VIEW)
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
             fig.patch.set_facecolor('#0B0F19')
             
@@ -82,17 +82,12 @@ class DepthProfileEngine:
             # ==========================================
             ax1.set_facecolor('#030712')
             
-            # Sub-sample batimetri jika titik terlalu padat agar plot lebih cepat (opsional)
             plot_df = df if len(df) < 50000 else df.sample(50000)
-            
-            # Scatter kedalaman dasar laut
             sc = ax1.scatter(plot_df['x'], plot_df['y'], c=plot_df['z'], cmap='ocean', s=5, alpha=0.6)
             
-            # Garis Transek
             ax1.plot(px, py, color='#EF4444', linewidth=2.5, linestyle='-', label='Garis Transek')
             ax1.scatter(px[0], py[0], color='#10B981', marker='o', s=100, edgecolor='w', zorder=4, label='Start (Pesisir)')
             
-            # Titik Bintang DoC
             if doc_found:
                 ax1.scatter(doc_x_pt, doc_y_pt, color='#F59E0B', marker='*', s=400, edgecolor='black', linewidth=1.5, zorder=5, label=f'Titik DoC ({doc_depth:.2f}m)')
                 
@@ -102,7 +97,6 @@ class DepthProfileEngine:
             ax1.tick_params(colors='w')
             ax1.grid(True, color='#1E293B', linestyle=':', alpha=0.7)
             
-            # Colorbar Peta Spasial
             cb = plt.colorbar(sc, ax=ax1)
             cb.set_label('Elevasi (m)', color='w')
             cb.ax.yaxis.set_tick_params(color='w')
@@ -118,7 +112,6 @@ class DepthProfileEngine:
             ax2.axhline(doc_depth, color='#EF4444', linestyle='--', linewidth=2, label=f'Batas DoC ({doc_depth:.2f} m)')
             ax2.axhline(0, color='#10B981', linestyle='-', linewidth=1.5, label='Mean Sea Level (0.0 m)')
             
-            # Sinkronisasi penanda DoC di plot cross-section
             if doc_found:
                 ax2.scatter(doc_dist, doc_depth, color='#F59E0B', marker='*', s=300, edgecolor='black', zorder=5)
                 ax2.axvline(doc_dist, color='#F59E0B', linestyle=':', linewidth=1.5, alpha=0.8, label=f'Jarak DoC: {doc_dist:.1f} m')
@@ -157,11 +150,13 @@ class MeshBuilderEngine:
         """
         Fungsi utama Orkestrator DIMR. 
         Mendukung DECOUPLED BUILD: Hanya membuat D-Flow atau D-Waves atau Keduanya.
+        Diperkuat dengan Two-Way DIMR XML Coupler dan Auto-Sync Boundary Name.
         """
         if not HAS_DELTARES: 
             raise ImportError("Library dfm_tools, hydrolib-core, atau meshkernel tidak terinstal.")
             
         fig_preview = None
+        mesh2d = None  # Inisialisasi pengaman agar terhindar dari UnboundLocalError
         
         try:
             # 1. Unpack Parameters
@@ -199,7 +194,6 @@ class MeshBuilderEngine:
                 
                 max_res = float(params['max_res'])
                 min_res = float(params['min_res'])
-                doc_depth = -abs(float(params.get('doc', 0)))
                 
                 # Setup Base Grid D-FLOW
                 mk_f = MeshKernel()
@@ -211,7 +205,7 @@ class MeshBuilderEngine:
                 mk_f.curvilinear_make_uniform(make_grid_f)
                 mk_f.curvilinear_convert_to_mesh2d()
                 
-                # Fraktal Refinement berdasarkan Inner BBox & DoC
+                # Fraktal Refinement berdasarkan Inner BBox
                 poly_f = [(i_minx, i_miny), (i_maxx, i_miny), (i_maxx, i_maxy), (i_minx, i_maxy), (i_minx, i_miny)]
                 geom_f = GeometryList(
                     x_coordinates=np.array([c[0] for c in poly_f], dtype=np.double), 
@@ -236,7 +230,7 @@ class MeshBuilderEngine:
                         ldb_gdf = dfmt.read_polyfile(ldb_file)
                         for _, row in ldb_gdf.iterrows():
                             geom = row.geometry
-                            if geom.geom_type in ['Polygon', 'MultiPolygon', 'LineString']:
+                            if geom.geom_type in ['Polygon', 'MultiPolygon']:
                                 coords = np.array(geom.exterior.coords) if geom.geom_type == 'Polygon' else np.array(geom.coords)
                                 geom_list = GeometryList(
                                     x_coordinates=np.array(coords[:,0], dtype=np.double), 
@@ -270,8 +264,24 @@ class MeshBuilderEngine:
                     
                 tide_bc_file = params.get('tide_bc', '')
                 if tide_bc_file and os.path.exists(tide_bc_file):
+                    
+                    # [CRITICAL BUG-FIX]: Sinkronisasi Boundary Name
+                    # Menyamakan nama internal file .bc Modul 3 agar sesuai dengan posisi boundary Modul 4.
+                    target_bnd_name = f"{bnd_dir}_Ocean_Boundary"
+                    try:
+                        with open(tide_bc_file, 'r', encoding='utf-8') as f:
+                            bc_data = f.read()
+                        # Meretas dan mengganti nama target via regex
+                        bc_data = re.sub(r"Name\s*=\s*\w+_Ocean_Boundary", f"Name                            = {target_bnd_name}", bc_data)
+                        with open(tide_bc_file, 'w', encoding='utf-8') as f:
+                            f.write(bc_data)
+                        log_cb(f"  ├ [✓] Sinkronisasi nama Boundary Condition (.bc) ke: {target_bnd_name}")
+                    except Exception as e:
+                        logger.warning(f"Gagal menyinkronkan nama boundary di dalam file .bc: {e}")
+
                     qty_type = "neumannbnd" if params.get('use_riemann', True) else "waterlevelbnd"
                     if qty_type == "neumannbnd": log_cb("  ├ [✓] Riemann Boundary Aktif (Anti-Reflection).")
+                    
                     ext.boundary.append(Boundary(quantity=qty_type, locationfile=pli_file, forcingfile=os.path.basename(tide_bc_file)))
                 
                 ext_filepath = os.path.join(out_dir, "apex_forcing.ext")
@@ -296,7 +306,6 @@ class MeshBuilderEngine:
                 fm.filepath = fm_path
                 fm.save(filepath=fm_path)
                 
-                # Kirim Preview jika berjalan Standalone Flow atau Full Coupling
                 mesh2d = mk_f.mesh2d_get()
 
             progress_cb(50)
@@ -311,7 +320,6 @@ class MeshBuilderEngine:
                 w_min_res = float(params['w_min_res'])
                 w_level = float(params.get('w_level', 0.0))
                 
-                # Base Structured Grid
                 mk_w = MeshKernel()
                 make_grid_w = MakeGridParameters()
                 make_grid_w.origin_x, make_grid_w.origin_y = minx, miny
@@ -321,7 +329,6 @@ class MeshBuilderEngine:
                 mk_w.curvilinear_make_uniform(make_grid_w)
                 mk_w.curvilinear_convert_to_mesh2d()
                 
-                # Nested Grid at Inner BBox (Ini menghasilkan UGRID 2D berbasis kotak/rectilinear untuk stabilitas SWAN)
                 poly_w = [(i_minx, i_miny), (i_maxx, i_miny), (i_maxx, i_maxy), (i_minx, i_maxy), (i_minx, i_miny)]
                 geom_w = GeometryList(
                     x_coordinates=np.array([c[0] for c in poly_w], dtype=np.double), 
@@ -342,13 +349,11 @@ class MeshBuilderEngine:
                 file_nc_w = os.path.join(out_dir, "Wave_Mesh.nc")
                 mk_w.mesh2d_write_netcdf(file_nc_w)
                 
-                # Merakit file MDW SWAN
                 mdw_path = os.path.join(out_dir, "Apex_Wave.mdw")
                 with open(mdw_path, "w", encoding="utf-8") as f:
                     f.write("[Swan]\n")
                     f.write(f"GridFile = Wave_Mesh.nc\nBedLevelFile = {os.path.basename(bathy_file)}\n")
                     
-                    # [INJEKSI KALIBRASI]: SWAN butuh Elevasi konstan jika berjalan tanpa Flow
                     if b_mode == 'dwaves_only':
                         f.write(f"WaterLevel = {w_level:.2f}\n")
                         
@@ -357,27 +362,63 @@ class MeshBuilderEngine:
                         global_state.get('Hs', 1.0), global_state.get('Tp', 8.0), global_state.get('Dir', 180.0)))
                     f.write(f"Friction = {params.get('w_fric_type', 'JONSWAP')}\nFrictionCoefficient = 0.067\nDepthInducedBreaking = True\nAlpha = 1.0\nGamma = {params.get('w_gamma', 0.73)}\n")
                 
-                # Kirim Preview jika berjalan Standalone Waves
                 if b_mode == 'dwaves_only':
                     mesh2d = mk_w.mesh2d_get()
 
             progress_cb(80)
 
             # =====================================================================
-            # TAHAP 3: DIMR XML COUPLER (Hanya dirakit jika mode FULL COUPLING)
+            # TAHAP 3: DIMR XML COUPLER (Dinamis Two-Way Interaction)
             # =====================================================================
             if b_mode == 'coupled':
-                log_cb("■ [COUPLING] Merakit DIMR XML Coupler (Flow <-> Wave)...")
+                log_cb("■ [COUPLING] Merakit DIMR XML Coupler Dua-Arah (Flow <-> Wave)...")
                 dimr_path = os.path.join(out_dir, "dimr_config.xml")
+                
+                # [CRITICAL BUG-FIX]: Menginjeksi tag <coupler> agar D-FLOW dan SWAN
+                # secara aktif bertukar data level air, arus, dan tekanan gelombang.
+                xml_content = """<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<dimrConfig xmlns="http://schemas.deltares.nl/dimr" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.deltares.nl/dimr http://content.oss.deltares.nl/schemas/dimr-1.3.xsd">
+  <control>
+    <parallel>
+      <startGroup>
+        <time>0 86400 86400</time>
+        <coupler name="flow2wave" />
+        <coupler name="wave2flow" />
+        <start name="Flow" />
+        <start name="Wave" />
+      </startGroup>
+    </parallel>
+  </control>
+  <component name="Flow">
+    <library>dflowfm</library>
+    <workingDir>.</workingDir>
+    <inputFile>Apex_Flow.mdu</inputFile>
+  </component>
+  <component name="Wave">
+    <library>swan</library>
+    <workingDir>.</workingDir>
+    <inputFile>Apex_Wave.mdw</inputFile>
+  </component>
+  <coupler name="flow2wave">
+    <sourceComponent>Flow</sourceComponent>
+    <targetComponent>Wave</targetComponent>
+    <item>water_level</item>
+    <item>flow_velocity</item>
+  </coupler>
+  <coupler name="wave2flow">
+    <sourceComponent>Wave</sourceComponent>
+    <targetComponent>Flow</targetComponent>
+    <item>wave_rms_height</item>
+    <item>wave_peak_period</item>
+    <item>wave_direction</item>
+    <item>wave_forces</item>
+  </coupler>
+</dimrConfig>
+"""
                 with open(dimr_path, "w", encoding="utf-8") as f:
-                    f.write('<?xml version="1.0" encoding="utf-8" standalone="yes"?>\n')
-                    f.write('<dimrConfig xmlns="http://schemas.deltares.nl/dimr" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.deltares.nl/dimr http://content.oss.deltares.nl/schemas/dimr-1.3.xsd">\n')
-                    f.write('  <control>\n    <parallel>\n      <startGroup>\n        <time>0 86400 86400</time>\n')
-                    f.write('        <start name="Flow" />\n        <start name="Wave" />\n      </startGroup>\n    </parallel>\n  </control>\n')
-                    f.write('  <component name="Flow">\n    <library>dflowfm</library>\n    <workingDir>.</workingDir>\n    <inputFile>Apex_Flow.mdu</inputFile>\n  </component>\n')
-                    f.write('  <component name="Wave">\n    <library>swan</library>\n    <workingDir>.</workingDir>\n    <inputFile>Apex_Wave.mdw</inputFile>\n  </component>\n</dimrConfig>\n')
+                    f.write(xml_content)
 
-            # --- PLOT RENDERING (Menggunakan mesh terakhir yang dibuat berdasarkan mode) ---
+            # --- PLOT RENDERING ---
             if mesh2d is not None:
                 fig_preview, ax = plt.subplots(figsize=(8, 6))
                 ax.set_facecolor('#1E2128')
