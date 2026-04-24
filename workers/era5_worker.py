@@ -17,7 +17,8 @@ except ImportError:
 class ERA5DownloaderWorker(QThread):
     """
     [TIER-0] Background Worker for retrieving Copernicus ERA5 Data.
-    Implements CDS API v3 compliance, strict I/O validation, and secure credential isolation.
+    Implements CDS API v3 compliance, strict I/O validation, and completely
+    THREAD-SAFE execution (No global os.environ pollution).
     """
     log_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bool, str)
@@ -34,6 +35,7 @@ class ERA5DownloaderWorker(QThread):
     def run(self) -> None:
         """
         Executed in a separate thread. Never manipulate UI directly from here.
+        Strictly isolates API credentials to prevent Race Conditions.
         """
         if not HAS_CDSAPI: 
             self.log_signal.emit("❌ [FATAL] Library 'cdsapi' tidak ditemukan. Jalankan: pip install cdsapi")
@@ -48,12 +50,11 @@ class ERA5DownloaderWorker(QThread):
             if not os.path.exists(out_dir):
                 os.makedirs(out_dir, exist_ok=True)
             
-            # 2. Secure Environment Injection (BUG-03 FIX: API v3 Endpoint)
-            os.environ["CDSAPI_URL"] = "https://cds.climate.copernicus.eu/api"
-            os.environ["CDSAPI_KEY"] = self.api_key
-            
-            # Matikan quiet mode agar pesan asli dari server CDS terekam di log terminal
-            c = cdsapi.Client(quiet=False)
+            # 2. THREAD-SAFE API INITIALIZATION (The Sync Fix)
+            # Dosa besar: Menggunakan os.environ di dalam QThread memicu Global Pollution & Race Condition.
+            # Fix: CDS API v3 mendukung injeksi URL dan Key langsung ke instansiasi Client.
+            cds_url = "https://cds.climate.copernicus.eu/api"
+            c = cdsapi.Client(url=cds_url, key=self.api_key, quiet=False)
             
             # 3. Parameter Compilation
             years = list(set([str(y) for y in range(self.d_start.date().year(), self.d_end.date().year() + 1)]))
@@ -67,7 +68,7 @@ class ERA5DownloaderWorker(QThread):
             # Menyediakan resolusi waktu 6-jam untuk memperkecil ukuran file
             times = ["00:00", "06:00", "12:00", "18:00"]
             
-            # BUG-03 FIX: Format request wajib mengikuti standar CDS v3 (download_format & list for product_type)
+            # Format request sesuai standar ketat CDS v3
             req = { 
                 "product_type": ["reanalysis"], 
                 "variable": self.params, 
@@ -87,7 +88,7 @@ class ERA5DownloaderWorker(QThread):
             self.log_signal.emit(f"■ Menghubungi server satelit Copernicus. Rentang: {self.d_start.toString('yyyy-MM-dd')} s/d {self.d_end.toString('yyyy-MM-dd')}...")
             logger.info(f"[ERA5] Memulai request CDS API. Payload: {req}")
             
-            # 4. API Request Execution (Blocking call, safe in QThread)
+            # 4. API Request Execution (Blocking call, safe inside QThread)
             c.retrieve("reanalysis-era5-single-levels", req, self.out_file)
             
             if not os.path.exists(self.out_file) or os.path.getsize(self.out_file) == 0:
@@ -97,13 +98,15 @@ class ERA5DownloaderWorker(QThread):
             self.finished_signal.emit(True, self.out_file)
             
         except Exception as e: 
+            # 5. SECURITY CLEAN-UP: Mencegah file NetCDF yang korup tersisa di hard disk
+            if os.path.exists(self.out_file):
+                try:
+                    os.remove(self.out_file)
+                    logger.debug(f"[ERA5] Cleaned up corrupted/incomplete file: {self.out_file}")
+                except Exception as cleanup_err:
+                    logger.warning(f"[ERA5] Failed to clean up corrupted file: {cleanup_err}")
+                    
             error_details = f"{str(e)}\n{traceback.format_exc()}"
             logger.error(f"[FATAL] Kegagalan CDS API: {error_details}")
             self.log_signal.emit(f"❌ Kegagalan Koneksi/Sistem CDS: {str(e)}")
             self.finished_signal.emit(False, "")
-            
-        finally:
-            # 5. Security Clean-up: Hapus jejak API Key pengguna dari memori global OS
-            os.environ.pop("CDSAPI_URL", None)
-            os.environ.pop("CDSAPI_KEY", None)
-            logger.debug("[ERA5] Environment keys securely cleared.")
