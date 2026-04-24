@@ -3,6 +3,7 @@
 # ==============================================================================
 import logging
 import traceback
+import pandas as pd
 from PyQt6.QtCore import QThread, pyqtSignal
 from engines.sediment_mapper import SpatialSedimentEngine
 
@@ -12,14 +13,18 @@ class SedimentWorker(QThread):
     """
     [TIER-0] Background Worker for Spatial Interpolation of Sediment/Mangrove fields.
     Delegates heavy Delaunay processing to the hardened SpatialSedimentEngine.
+    Thread-safe data isolation implemented to prevent Race Conditions.
     """
     log_signal = pyqtSignal(str)
     plot_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(str)
 
-    def __init__(self, df, col_x, col_y, col_val, convert_ks, mode_type, epsg):
+    def __init__(self, df: pd.DataFrame, col_x: str, col_y: str, col_val: str, convert_ks: bool, mode_type: str, epsg: str):
         super().__init__()
-        self.df = df
+        # [CRITICAL GUARD]: Deep copy untuk isolasi memori mutlak dari UI Thread
+        # Mencegah crash jika pengguna mengotak-atik UI saat proses spasial berjalan
+        self.df = df.copy() if df is not None else None
+        
         self.col_x = col_x
         self.col_y = col_y
         self.col_val = col_val
@@ -31,15 +36,18 @@ class SedimentWorker(QThread):
         try:
             self.log_signal.emit("■ Inisiasi Ekstraksi & Interpolasi Spasial Aktif...")
             
+            # [STRICT ROUTING]: Mencegah Miss-Logic jika mode_type tidak dikenali
             if self.mode_type == 'mangrove':
                 self.log_signal.emit("  ├ Mode Mangrove: Distribusi spasial densitas Trachytope.")
             elif self.mode_type == 'submerged':
                 self.log_signal.emit("  ├ Mode Submerged Vegetation: Distribusi ekosistem bawah laut (Lamun/Karang).")
-            else:
+            elif self.mode_type == 'sediment':
                 if self.convert_ks:
-                    self.log_signal.emit("  ├ Sedimen: Satuan ditransformasi ke Nikuradse (ks=2.5D).")
+                    self.log_signal.emit("  ├ Mode Sedimen: Transformasi D50 ke Nikuradse (ks=2.5D) Aktif.")
                 else:
-                    self.log_signal.emit("  ├ Sedimen: Memproses data matriks spasial Native.")
+                    self.log_signal.emit("  ├ Mode Sedimen: Memproses data matriks spasial Native.")
+            else:
+                raise ValueError(f"Tipe mode '{self.mode_type}' tidak diizinkan oleh sistem.")
             
             # Failsafe Guard: Mencegah Engine memproses DataFrame kosong
             if self.df is None or self.df.empty:
