@@ -394,6 +394,12 @@ class Modul4Mesh(QWidget):
         self.inp_gamma.setFixedWidth(80)
         wg2.addRow(QLabel("Gamma Breaking:", styleSheet="color: #9CA3AF; font-weight: bold;"), self.inp_gamma)
         
+        # [NEW INJECTION]: Constant Water Level for D-Waves Standalone Calibration
+        self.inp_w_level = QLineEdit("0.0")
+        self.inp_w_level.setFixedWidth(80)
+        self.inp_w_level.setToolTip("Hanya digunakan pada Tahap 2 (D-WAVES Standalone) sebagai elevasi referensi pengganti pasang surut D-FLOW.")
+        wg2.addRow(QLabel("Elevasi Air Konstan (m):", styleSheet="color: #F7C159; font-weight: bold;"), self.inp_w_level)
+        
         # Read-only display of ERA5 Wave Initial Conditions
         self.lbl_w_ic = QLabel("Hs: - m | Tp: - s | Dir: - °")
         self.lbl_w_ic.setStyleSheet("color: #595FF7; font-weight: bold; font-family: 'Consolas', monospace; font-size: 13px; padding: 10px; background: #1F2227; border-radius: 8px; border: 1px solid #3A3F4A;")
@@ -412,12 +418,32 @@ class Modul4Mesh(QWidget):
         self.lbl_cost.setAlignment(Qt.AlignmentFlag.AlignCenter)
         scroll_layout.addWidget(self.lbl_cost)
 
-        # --- EXECUTE MASTER BUTTON ---
-        self.btn_mesh = QPushButton("⚡ RAKIT ARSITEKTUR KOPLING (MDU + SWAN + DIMR)")
+        # --- BUILD STRATEGY & EXECUTION BUTTON ---
+        bgrp = QGroupBox("3. Strategi Kompilasi & Kalibrasi")
+        blay = QVBoxLayout(bgrp)
+        blay.setSpacing(16)
+        
+        info_b = QLabel("PENTING: Praktik oseanografi numerik mensyaratkan kalibrasi muka air pasut (D-FLOW) secara terpisah sebelum melakukan Full Coupling dengan gelombang (D-WAVES) untuk menghindari *error* berantai. Gunakan Tahap 1 dan Tahap 2 sebelum melakukan Full Coupling.")
+        info_b.setStyleSheet("color: #F7C159; font-size: 12px; line-height: 1.4; font-style: italic;")
+        info_b.setWordWrap(True)
+        blay.addWidget(info_b)
+        
+        self.cmb_build_mode = QComboBox()
+        self.cmb_build_mode.addItems([
+            "Tahap 1: D-FLOW Standalone (Kalibrasi Muka Air & Pasut)",
+            "Tahap 2: D-WAVES Standalone (Kalibrasi Setup Gelombang)",
+            "Tahap 3: FULL COUPLING DIMR (Interaksi Flow-Wave Dinamis)"
+        ])
+        self.cmb_build_mode.currentTextChanged.connect(self._update_build_btn_text)
+        blay.addWidget(self.cmb_build_mode)
+
+        self.btn_mesh = QPushButton("⚡ RAKIT D-FLOW STANDALONE (.mdu)")
         self.btn_mesh.setObjectName("PrimaryBtn")
         self.btn_mesh.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_mesh.clicked.connect(self.run_dimr_pipeline)
-        scroll_layout.addWidget(self.btn_mesh)
+        blay.addWidget(self.btn_mesh)
+        
+        scroll_layout.addWidget(bgrp)
 
         # --- TERMINAL LOG ---
         bl = QVBoxLayout()
@@ -444,6 +470,15 @@ class Modul4Mesh(QWidget):
     # --------------------------------------------------------------------------
     # UI HELPER FUNCTIONS
     # --------------------------------------------------------------------------
+    def _update_build_btn_text(self, text: str) -> None:
+        """Memperbarui teks tombol eksekusi berdasarkan mode kalibrasi yang dipilih."""
+        if "Tahap 1" in text:
+            self.btn_mesh.setText("⚡ RAKIT D-FLOW STANDALONE (.mdu)")
+        elif "Tahap 2" in text:
+            self.btn_mesh.setText("⚡ RAKIT D-WAVES STANDALONE (.mdw)")
+        else:
+            self.btn_mesh.setText("⚡ RAKIT FULL COUPLING (DIMR XML)")
+
     def create_slider_row(self, min_val, max_val, default_val):
         sld = QSlider(Qt.Orientation.Horizontal)
         sld.setRange(min_val, max_val)
@@ -685,6 +720,12 @@ class Modul4Mesh(QWidget):
 
         state = app_state.get_all()
         
+        # Tentukan Mode Build dari ComboBox
+        mode_text = self.cmb_build_mode.currentText()
+        if "Tahap 1" in mode_text: b_mode = "dflow_only"
+        elif "Tahap 2" in mode_text: b_mode = "dwaves_only"
+        else: b_mode = "coupled"
+        
         # Gabungan parameter D-FLOW dan D-WAVES
         p = {
             'he': state.get('He', 1.5), 
@@ -699,6 +740,9 @@ class Modul4Mesh(QWidget):
             'sediment_file': state.get('sediment_xyz', ""), 
             'tide_bc': state.get('tide_bc', ""),
             
+            # Strategi Kompilasi
+            'build_mode': b_mode,
+            
             # Flow Resolution
             'max_res': self.sld_fmax.value(), 
             'min_res': self.sld_fmin.value(), 
@@ -710,16 +754,18 @@ class Modul4Mesh(QWidget):
             'w_min_res': self.sld_wmin.value(),
             'w_fric_type': self.cmb_w_fric.currentText(),
             'w_gamma': float(self.inp_gamma.text() or 0.73),
+            'w_level': float(self.inp_w_level.text() or 0.0), # INJEKSI WATER LEVEL UNTUK KALIBRASI SWAN
             
             'out_dir': os.path.abspath(os.path.join(os.getcwd(), 'Apex_FM_Model_Final'))
         }
         
+        # Validasi I/O ketat untuk SEMUA skenario
         if not p['bathy_file'] or not p['aoi_bounds'] or not p['inner_bbox']:
-            QMessageBox.critical(self, "Spesifikasi Inkomplit", "Batimetri, Outer BBox (ERA5), dan Inner BBox Mikro (Clungup) wajib ada.")
+            QMessageBox.critical(self, "Spesifikasi Inkomplit", "Batimetri, Outer BBox (ERA5), dan Inner BBox Mikro wajib ada untuk merakit mesh komputasi.")
             return
 
         self.btn_mesh.setEnabled(False)
-        self.btn_mesh.setText("⏳ MERAKIT DIMR COUPLER (MDU & SWAN)...")
+        self.btn_mesh.setText("⏳ MEMPROSES ARSITEKTUR GRID...")
         self.log_mesh.clear()
         
         self.dimr_worker = ApexDIMROrchestratorWorker(p, state)
@@ -728,9 +774,9 @@ class Modul4Mesh(QWidget):
         
         def on_mesh_done(status: str, success: bool):
             self.btn_mesh.setEnabled(True)
-            self.btn_mesh.setText("⚡ RAKIT ARSITEKTUR KOPLING (MDU + SWAN + DIMR)")
+            self._update_build_btn_text(self.cmb_build_mode.currentText()) # Mengembalikan teks tombol
             if success: 
-                QMessageBox.information(self, "Kompilasi Sukses", "Kopling Mesh D-Flow (Flexible) & D-Waves (Rectilinear) selesai dirakit.")
+                QMessageBox.information(self, "Kompilasi Sukses", f"Eksekusi perakitan mesh/konfigurasi ({b_mode}) berhasil diselesaikan. Anda dapat beralih ke Modul 5 (Execution).")
             self.dimr_worker.deleteLater()
             
         self.dimr_worker.finished_signal.connect(on_mesh_done)
