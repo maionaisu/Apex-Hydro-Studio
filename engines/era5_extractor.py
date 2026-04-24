@@ -40,12 +40,33 @@ class ERA5Extractor:
             # 2. Dask Lazy Evaluation enforced via chunks='auto'
             # This prevents multi-gigabyte NetCDF files from causing OOM crashes.
             with xr.open_dataset(nc_path, chunks='auto', engine='netcdf4') as ds:
+                import dask
+                # ⚡ Bolt Optimization: Batch Dask computations to prevent multiple disk reads
+                # Sequential `.values` calls on out-of-core datasets trigger redundant data passes.
+                ops = []
+                if 'swh' in ds: ops.append(ds['swh'].max())
+                if 'mwp' in ds: ops.append(ds['mwp'].mean())
+                if 'mwd' in ds: ops.append(ds['mwd'].mean())
                 
-                # Computation happens out-of-core. .values implicitly triggers .compute() 
-                # but Dask handles the chunked iteration safely in the background.
-                hs = float(ds['swh'].max().values) if 'swh' in ds else 1.5
-                tp = float(ds['mwp'].mean().values) if 'mwp' in ds else 8.0
-                dir_ = float(ds['mwd'].mean().values) if 'mwd' in ds else 180.0
+                if ops:
+                    results = dask.compute(*ops)
+                    idx = 0
+                    if 'swh' in ds:
+                        hs = float(results[idx].values)
+                        idx += 1
+                    else: hs = 1.5
+
+                    if 'mwp' in ds:
+                        tp = float(results[idx].values)
+                        idx += 1
+                    else: tp = 8.0
+
+                    if 'mwd' in ds:
+                        dir_ = float(results[idx].values)
+                        idx += 1
+                    else: dir_ = 180.0
+                else:
+                    hs, tp, dir_ = 1.5, 8.0, 180.0
                 
                 # Simple DoC estimation (Hallermeier equation approximation)
                 doc = 1.57 * hs
