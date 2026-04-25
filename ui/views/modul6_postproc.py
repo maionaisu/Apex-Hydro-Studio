@@ -16,13 +16,13 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QCursor
 
 try:
-    import geopandas as gpd
-    HAS_GEOPANDAS = True
+    import xarray as xr
+    HAS_XARRAY = True
 except ImportError:
-    HAS_GEOPANDAS = False
+    HAS_XARRAY = False
 
 from utils.config import get_leaflet_html
-from workers.postproc_worker import PostProcAnimationWorker
+from workers.postproc_worker import PostProcAnimationWorker, ValidationWorker
 from core.state_manager import app_state
 from ui.components.web_bridge import WebBridge
 
@@ -308,7 +308,7 @@ class Modul6PostProc(QWidget):
         layout.addWidget(splitter_val, stretch=1)
 
     # --------------------------------------------------------------------------
-    # SPATIAL ANIMATION LOGIC (Existing)
+    # SPATIAL ANIMATION LOGIC (FIXED)
     # --------------------------------------------------------------------------
     def load_file(self, target: str) -> None:
         if target in ['spatial_nc', 'val_nc']:
@@ -318,6 +318,19 @@ class Modul6PostProc(QWidget):
                     self.nc_file = os.path.abspath(p)
                     self.btn_nc.setText(f"📂 {os.path.basename(p)}")
                     self.btn_nc.setStyleSheet("color: #42E695; border-color: #42E695;")
+                    
+                    # [BUG FIX]: Membaca dimensi waktu dari NetCDF untuk mengaktifkan Slider
+                    if HAS_XARRAY:
+                        try:
+                            with xr.open_dataset(self.nc_file, engine='netcdf4') as ds:
+                                time_len = len(ds['time'])
+                                self.current_max_time = max(0, time_len - 1)
+                                self.sld_time.setRange(0, self.current_max_time)
+                                self.sld_time.setEnabled(True)
+                                self.lbl_t_idx.setText(f"Idx: [ 0 / {self.current_max_time} ]")
+                        except Exception as e:
+                            QMessageBox.warning(self, "Warning", f"Gagal membaca index waktu dari file NetCDF: {str(e)}")
+                    
                 else:
                     self.val_nc_file = os.path.abspath(p)
                     self.lbl_v_nc.setText("✓ " + os.path.basename(p))
@@ -330,20 +343,61 @@ class Modul6PostProc(QWidget):
                 self.lbl_v_csv.setStyleSheet("color: #42E695;")
 
     def import_aoi_shapefile(self) -> None:
-        pass # Existing logic...
+        pass # Optional/Extra feature
+
     def manual_update_bbox(self) -> None:
-        pass # Existing logic...
+        pass # Optional/Extra feature
+
     def on_slider_moved(self, val: int) -> None:
         self.lbl_t_idx.setText(f"Idx: [ {val} / {self.current_max_time} ]")
+
     def on_slider_released(self) -> None:
         self.trigger_render(self.sld_time.value())
+
     def trigger_render(self, time_idx: int) -> None:
-        pass # Existing worker delegation...
+        """[BUG FIX]: Memanggil Worker untuk menghasilkan frame overlay Leaflet."""
+        if not self.nc_file:
+            QMessageBox.warning(self, "Validasi", "Harap unggah file NetCDF (.nc) terlebih dahulu.")
+            return
+            
+        epsg = app_state.get('EPSG', '32749')
+        var_name = self.cmb_var.currentText()
+        out_dir = os.path.abspath(os.path.join(os.getcwd(), 'Apex_Data_Exports'))
+
+        self.btn_ren.setEnabled(False)
+        self.btn_ren.setText("⏳ MENG-RENDER FRAME...")
+
+        self.anim_w = PostProcAnimationWorker(self.nc_file, var_name, time_idx, epsg, out_dir)
+        self.anim_w.frame_signal.connect(self.apply_overlay)
+
+        def on_finished(success: bool):
+            self.btn_ren.setEnabled(True)
+            self.btn_ren.setText("▶ RENDER FRAME")
+            if not success:
+                QMessageBox.warning(self, "Render Gagal", "Gagal merender frame dari file NetCDF.")
+            self.anim_w.deleteLater()
+
+        self.anim_w.finished_signal.connect(on_finished)
+        self.anim_w.start()
+
     def apply_overlay(self, data: dict) -> None:
-        pass # Existing JS injection...
+        """[BUG FIX]: Menyuntikkan Base64 PNG ke WebEngine Leaflet."""
+        b = data['bounds']
+        
+        # Native Leaflet command untuk membersihkan overlay sebelumnya dan memasukkan yang baru
+        js_code = f"""
+            if(window.currentOverlay) {{ map.removeLayer(window.currentOverlay); }}
+            var bounds = [[{b['S']}, {b['W']}], [{b['N']}, {b['E']}]];
+            window.currentOverlay = L.imageOverlay('{data['base64_img']}', bounds, {{opacity: 0.8}}).addTo(map);
+            map.fitBounds(bounds);
+        """
+        self.web_map.page().runJavaScript(js_code)
+        
+        self.lbl_t_str.setText(f"Waktu: {data['time_str']}")
+        self.lbl_t_idx.setText(f"Idx: [ {self.sld_time.value()} / {self.current_max_time} ]")
 
     # --------------------------------------------------------------------------
-    # VALIDATION DASHBOARD LOGIC (New Features)
+    # VALIDATION DASHBOARD LOGIC
     # --------------------------------------------------------------------------
     def run_validation(self) -> None:
         if not self.val_nc_file or not self.val_csv_file:
@@ -373,9 +427,6 @@ class Modul6PostProc(QWidget):
         out_dir = os.path.abspath(os.path.join(os.getcwd(), 'Apex_Data_Exports'))
         target_var = self.cmb_v_var.currentText()
         
-        # Import ValidationWorker directly here to avoid circular imports if any
-        from workers.postproc_worker import ValidationWorker
-        
         self.val_worker = ValidationWorker(self.val_nc_file, self.val_csv_file, target_var, lat, lon, epsg, out_dir)
         
         def display_results(res: dict):
@@ -397,6 +448,8 @@ class Modul6PostProc(QWidget):
             self.btn_run_val.setText("⚡ JALANKAN VALIDASI & EKSTRAKSI")
             if success:
                 QMessageBox.information(self, "Validasi Selesai", "Data berhasil disinkronisasi dan grafik validasi telah di-render!")
+            else:
+                QMessageBox.warning(self, "Validasi Gagal", "Terjadi kesalahan saat menyelaraskan data Observasi dan Model.")
             self.val_worker.deleteLater()
             
         self.val_worker.result_signal.connect(display_results)
