@@ -7,6 +7,8 @@ import traceback
 import copy
 import pandas as pd
 from PyQt6.QtCore import QThread, pyqtSignal
+
+# Asumsi modul engine ekstraksi LSHA Anda
 from engines.tide_lsha import TideAnalyzerEngine
 
 logger = logging.getLogger(__name__)
@@ -53,7 +55,7 @@ class TideAnalyzerWorker(QThread):
             error_details = f"{str(e)}\n{traceback.format_exc()}"
             logger.error(f"[FATAL] Tide Analyzer Worker Error: {error_details}")
             self.log_signal.emit(f"❌ Error Analisis Pasut: {str(e)}")
-            self.finished_signal.emit("")
+            self.finished_signal.emit("ERROR")
 
 
 class TideGeneratorWorker(QThread):
@@ -63,11 +65,17 @@ class TideGeneratorWorker(QThread):
     """
     finished_signal = pyqtSignal(str)
 
-    def __init__(self, constituents: dict, out_dir: str):
+    def __init__(self, constituents: dict, out_dir: str, t_start: str, t_end: str):
+        """
+        [SYNC FIX] Ditambahkan argumen t_start dan t_end agar sesuai 
+        dengan parameter yang dilempar dari ui/views/modul3_tide.py
+        """
         super().__init__()
         # [CRITICAL GUARD]: Deep copy dari Dictionary UI agar aman di Background Thread
         self.constituents = copy.deepcopy(constituents) if constituents else {}
         self.out_dir = os.path.abspath(out_dir)
+        self.t_start = t_start
+        self.t_end = t_end
 
     def run(self) -> None:
         try:
@@ -75,14 +83,20 @@ class TideGeneratorWorker(QThread):
             if not self.constituents:
                 raise ValueError("Kamus parameter konstanta harmonik kosong. Jalankan LSHA terlebih dahulu.")
                 
-            # FIX: File I/O Safety (Mencegah FileExistsError)
+            # File I/O Safety (Mencegah FileExistsError)
             if not os.path.exists(self.out_dir): 
                 os.makedirs(self.out_dir, exist_ok=True)
                 
             bc_file = os.path.join(self.out_dir, "apex_forcing.bc")
             
-            # FIX: Menambahkan encoding="utf-8" untuk mencegah korupsi format OS
+            # Menambahkan encoding="utf-8" untuk mencegah korupsi format OS
             with open(bc_file, "w", encoding="utf-8") as f:
+                # [ENTERPRISE HARDENING]: Injeksi Metadata Waktu sebagai komentar
+                # Delft3D-FM mengabaikan baris '#' namun ini krusial untuk pelacakan (Auditing)
+                f.write(f"# APEX NEXUS TIER-0 FORCING METADATA\n")
+                f.write(f"# SIMULATION TIME WINDOW: {self.t_start} TO {self.t_end}\n")
+                f.write(f"# BOUNDARY TYPE: ASTRONOMIC GENERATED VIA LSHA\n\n")
+                
                 f.write("[forcing]\n")
                 f.write("Name                            = South_Ocean_Boundary\n")
                 f.write("Function                        = astronomic\n")
@@ -101,6 +115,5 @@ class TideGeneratorWorker(QThread):
             self.finished_signal.emit(bc_file)
             
         except Exception as e: 
-            # Menghapus bare `except:` dan merekam traceback penuh untuk Backend
             logger.error(f"[FATAL] Tide Generator Worker Error: {str(e)}\n{traceback.format_exc()}")
             self.finished_signal.emit("")
