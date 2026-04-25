@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class WebBridge(QObject):
     """
     [TIER-0] QWebChannel Bridge for two-way communication between PyQt6 Python and Leaflet JavaScript.
-    Hardened with strict JSON payload validation to prevent Event Loop crashes.
+    Hardened with strict JSON payload validation and type assertion to prevent Event Loop crashes.
     """
     bbox_drawn = pyqtSignal(dict)
     transect_drawn = pyqtSignal(list)
@@ -22,11 +22,20 @@ class WebBridge(QObject):
         Menerima koordinat Bounding Box dari kotak yang digambar user di Leaflet.
         """
         try:
+            # [ENTERPRISE SAFEGUARD]: Validasi String Kosong
+            if not data_json or not data_json.strip():
+                raise ValueError("Menerima payload JSON kosong dari UI Peta.")
+
             parsed_data = json.loads(data_json)
             
             # Failsafe Guard: Tipe data Bounding Box harus selalu berupa Dictionary
             if not isinstance(parsed_data, dict):
                 raise ValueError(f"Payload Bounding Box harus berupa dictionary, menerima: {type(parsed_data)}")
+                
+            # Failsafe Guard: Validasi Kunci Absolut
+            required_keys = {'N', 'S', 'E', 'W'}
+            if not required_keys.issubset(parsed_data.keys()):
+                raise ValueError(f"Payload kehilangan kunci koordinat wajib. Memiliki: {list(parsed_data.keys())}")
                 
             logger.debug(f"[WEB BRIDGE] BBox received: {parsed_data}")
             self.bbox_drawn.emit(parsed_data)
@@ -42,6 +51,9 @@ class WebBridge(QObject):
         Menerima deretan koordinat (Lat/Lon) dari garis Polyline yang digambar user di Leaflet.
         """
         try:
+            if not data_json or not data_json.strip():
+                raise ValueError("Menerima payload JSON kosong dari UI Peta.")
+
             parsed_data = json.loads(data_json)
             
             # Failsafe Guard: Tipe data Transect harus berupa List / Array
