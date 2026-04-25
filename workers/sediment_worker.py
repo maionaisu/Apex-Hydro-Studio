@@ -12,14 +12,14 @@ logger = logging.getLogger(__name__)
 class SedimentWorker(QThread):
     """
     [TIER-0] Background Worker for Spatial Interpolation of Sediment/Mangrove fields.
-    Delegates heavy Delaunay processing to the hardened SpatialSedimentEngine.
+    Delegates heavy Kriging or Delaunay processing to the SpatialSedimentEngine.
     Thread-safe data isolation implemented to prevent Race Conditions.
     """
     log_signal = pyqtSignal(str)
     plot_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(str)
 
-    def __init__(self, df: pd.DataFrame, col_x: str, col_y: str, col_val: str, convert_ks: bool, mode_type: str, epsg: str):
+    def __init__(self, df: pd.DataFrame, col_x: str, col_y: str, col_val: str, convert_ks: bool, mode_type: str, epsg: str, interp_method: str):
         super().__init__()
         # [CRITICAL GUARD]: Deep copy untuk isolasi memori mutlak dari UI Thread
         # Mencegah crash jika pengguna mengotak-atik UI saat proses spasial berjalan
@@ -31,6 +31,7 @@ class SedimentWorker(QThread):
         self.convert_ks = convert_ks
         self.mode_type = mode_type # 'sediment', 'mangrove', 'submerged'
         self.epsg = epsg
+        self.interp_method = interp_method
 
     def run(self) -> None:
         try:
@@ -53,13 +54,22 @@ class SedimentWorker(QThread):
             if self.df is None or self.df.empty:
                 raise ValueError("DataFrame survei dari UI kosong atau tidak terdefinisi.")
                 
-            # Handoff ke Tier-0 Engine
+            # [ENTERPRISE FIX]: Menyuntikkan log_cb agar log dari Engine bisa diteruskan ke UI Terminal
+            # Serta menambahkan parsing parameter metode Kriging
             plot_path, xyz_path = SpatialSedimentEngine.process_and_interpolate(
-                self.df, self.col_x, self.col_y, self.col_val, self.epsg, self.mode_type, self.convert_ks
+                df=self.df, 
+                col_x=self.col_x, 
+                col_y=self.col_y, 
+                col_val=self.col_val, 
+                epsg=self.epsg, 
+                mode_type=self.mode_type, 
+                apply_ks=self.convert_ks,
+                interp_method=self.interp_method,
+                log_cb=self.log_signal.emit
             )
             
             logger.info(f"[SEDIMENT WORKER] Interpolation successful. Exported to: {xyz_path}")
-            self.log_signal.emit(f"✅ Interpolasi Delaunay sukses. Target XYZ: {xyz_path}")
+            self.log_signal.emit(f"✅ Interpolasi {self.interp_method.split(' ')[0]} sukses. Target XYZ: {xyz_path}")
             
             # Transmit sinyal rendering gambar & hasil XYZ ke UI Event Loop
             self.plot_signal.emit(plot_path)
