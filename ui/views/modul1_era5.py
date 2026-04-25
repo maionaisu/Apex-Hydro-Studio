@@ -65,8 +65,9 @@ class Modul1ERA5(QWidget):
         self._syncing = False
         self.era5_path = "" 
         
-        # Mengaitkan sinyal global StateManager
+        # Sinkronisasi Global State
         app_state.state_updated.connect(self.on_global_state_changed)
+        app_state.bulk_state_updated.connect(self.on_bulk_state_changed)
         
         self.setup_ui()
 
@@ -244,6 +245,10 @@ class Modul1ERA5(QWidget):
         self.dt_end.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.dt_end.setCalendarPopup(True)
         
+        # [HARDENING]: Memicu Time Sync saat tanggal diubah
+        self.dt_start.dateTimeChanged.connect(self._sync_time_to_state)
+        self.dt_end.dateTimeChanged.connect(self._sync_time_to_state)
+        
         h_date = QHBoxLayout()
         h_date.addWidget(self.dt_start)
         h_date.addWidget(QLabel(" s/d ", styleSheet="color:#9CA3AF; font-weight:bold;"))
@@ -276,7 +281,7 @@ class Modul1ERA5(QWidget):
         btn_load.clicked.connect(self.load_era5_file)
         g2.addRow(btn_load)
         
-        # GRID EXTENT DASHBOARD (Dosen's Requirement)
+        # GRID EXTENT DASHBOARD
         self.grid_stats_frame = QFrame()
         self.grid_stats_frame.setStyleSheet("background-color: #1E2128; border: 1px solid #3A3F4A; border-radius: 8px; padding: 5px;")
         g_stat_lay = QHBoxLayout(self.grid_stats_frame)
@@ -344,22 +349,48 @@ class Modul1ERA5(QWidget):
         
         splitter.setSizes([450, 450])
         main_layout.addWidget(splitter)
+        
+        # Sync Initial Time Boundary
+        self._sync_time_to_state()
 
     # --------------------------------------------------------------------------
     # STATE SYNCHRONIZATION & INTERACTION LOGIC
     # --------------------------------------------------------------------------
     
+    def _sync_time_to_state(self):
+        """[HARDENING] Sync Time Boundary for DIMR/Tidal execution"""
+        app_state.update_multiple({
+            'sim_start_time': self.dt_start.dateTime().toString(Qt.DateFormat.ISODate),
+            'sim_end_time': self.dt_end.dateTime().toString(Qt.DateFormat.ISODate)
+        })
+
+    def on_bulk_state_changed(self) -> None:
+        """Triggered when update_multiple is called from StateManager."""
+        self.on_global_state_changed('Hs') # Trigger visual update
+
     def on_global_state_changed(self, key: str) -> None:
         """Dipanggil otomatis oleh Singleton StateManager."""
         if key in ['Hs', 'Tp', 'Dir']:
             self.inp_man_hs.setText(f"{app_state.get('Hs', 0):.2f}")
             self.inp_man_tp.setText(f"{app_state.get('Tp', 0):.2f}")
             self.inp_man_dir.setText(f"{app_state.get('Dir', 0):.2f}")
+        elif key in ['sim_start_time', 'sim_end_time']:
+            # Prevent circular signals
+            self.dt_start.blockSignals(True)
+            self.dt_end.blockSignals(True)
+            
+            st_iso = app_state.get('sim_start_time', "")
+            en_iso = app_state.get('sim_end_time', "")
+            
+            if st_iso: self.dt_start.setDateTime(QDateTime.fromString(st_iso, Qt.DateFormat.ISODate))
+            if en_iso: self.dt_end.setDateTime(QDateTime.fromString(en_iso, Qt.DateFormat.ISODate))
+            
+            self.dt_start.blockSignals(False)
+            self.dt_end.blockSignals(False)
 
     def update_era5_bbox(self, data: dict) -> None:
         """Menangkap input BBox Request dari user via Peta Leaflet."""
         self._syncing = True
-        # Menyimpan koordinat permintaan unduhan sementara
         self.req_bounds = data 
         self.lbl_req_bbox.setText(f"Request: N{data['N']:.2f}, S{data['S']:.2f}, E{data['E']:.2f}, W{data['W']:.2f}")
         self.lbl_req_bbox.setStyleSheet("color: #42E695; font-weight: bold; font-size:12px; background-color: rgba(66,230,149,0.1); padding: 10px; border-radius: 6px; border: 1px solid #42E695; margin-top: 15px;")
@@ -431,7 +462,7 @@ class Modul1ERA5(QWidget):
             self.btn_dl_era5.setEnabled(True)
             self.btn_dl_era5.setText("↓ Mulai Unduh dari Server Copernicus (.nc)")
             if success and os.path.exists(path):
-                self.load_era5_file(path) # Auto-load ke Extractor
+                self.load_era5_file(path)
                 self.log_era5.append(f"✅ Auto-Loaded: {os.path.basename(path)}")
             self.era_w.deleteLater()
             
@@ -439,7 +470,6 @@ class Modul1ERA5(QWidget):
         self.era_w.start()
 
     def load_era5_file(self, pre_path: str = "") -> None:
-        """Memuat file NetCDF, membaca metadata Xarray, dan menampilkan Grid asli ERA5."""
         path = pre_path
         if not path:
             path, _ = QFileDialog.getOpenFileName(self, "Pilih File ERA5 Lokal", "", "NetCDF (*.nc)")
@@ -477,28 +507,32 @@ class Modul1ERA5(QWidget):
             self.log_era5.append(f"❌ Error membaca metadata: {str(e)}")
 
     def execute_era5_local(self) -> None:
-        """Ekstrak Fisika ke Global State DAN broadcast batas AOI Makro."""
         if not self.era5_path or not os.path.exists(self.era5_path): 
             QMessageBox.critical(self, "Gagal", "File ERA5 belum diunduh/dipilih.")
             return
             
         try:
-            # 1. Broadcsat BBox Makro (Sesuai Grid ERA5) ke Global State (Modul 4)
             if hasattr(self, 'actual_nc_bounds'):
                 b = self.actual_nc_bounds
                 app_state.update('mesh_bbox', b)
                 self.log_era5.append("✅ [AUTO-AOI] Batas Makro D-Waves berhasil disinkronisasi ke Global State.")
                 
-                # Menggambar Macro AOI di Peta Modul 1 dengan warna Coral Red
                 js_box = f"addGeoJSON({{\"type\":\"Polygon\",\"coordinates\":[[[{b['W']},{b['S']}],[{b['E']},{b['S']}],[{b['E']},{b['N']}],[{b['W']},{b['N']}],[{b['W']},{b['S']}]]]}}, '#FC3F4D');"
                 self.web_map_era5.page().runJavaScript("clearMap(); " + js_box)
             
-            # 2. Delegasi ekstraksi Fisika (Hs, Tp, Dir) ke out-of-core engine
             if HAS_XARRAY:
                 self.log_era5.append("▶ Memanggil Out-of-Core Dask Extractor...")
                 hs, tp, dir_, doc = ERA5Extractor.extract_wave_params(self.era5_path)
                 
+                # [HARDENING] Sync Time boundaries too!
+                self._sync_time_to_state()
                 app_state.update_multiple({'He': hs, 'Hs': hs, 'Tp': tp, 'Dir': dir_, 'DoC': doc})
+                
+                # Paksa pembaruan TextBox lokal jika sinyal lambat
+                self.inp_man_hs.setText(f"{hs:.2f}")
+                self.inp_man_tp.setText(f"{tp:.2f}")
+                self.inp_man_dir.setText(f"{dir_:.2f}")
+                
                 self.log_era5.append(f"✅ Initial Condition Terkunci: Hs={hs:.2f}m, Tp={tp:.1f}s, Dir={dir_:.1f}°")
             else:
                 self.log_era5.append("❌ Pustaka Xarray tidak terpasang di sistem.")
@@ -513,6 +547,8 @@ class Modul1ERA5(QWidget):
             dir_ = float(self.inp_man_dir.text() or 180.0)
             doc = 1.57 * hs
             
+            # [HARDENING] Ensure time is synced
+            self._sync_time_to_state()
             app_state.update_multiple({'He': hs, 'Hs': hs, 'Tp': tp, 'Dir': dir_, 'DoC': doc})
             self.log_era5.append(f"✅ Parameter di-inject manual: Hs={hs}m, Tp={tp}s, Dir={dir_}°")
             
