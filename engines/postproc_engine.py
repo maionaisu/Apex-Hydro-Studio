@@ -1,157 +1,132 @@
 # ==============================================================================
-# APEX NEXUS TIER-0: NETCDF POST-PROCESSING & RENDERING ENGINE
+# APEX NEXUS TIER-0: POST-PROCESSING & VALIDATION ENGINE
 # ==============================================================================
 import os
+import gc
 import logging
 import traceback
 import numpy as np
+import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
 from pyproj import Transformer
+import matplotlib.tri as tri
+
+# [CRITICAL GUARD]: Memaksa Matplotlib menggunakan backend 'Agg' (Anti-Grain Geometry).
+# Ini menjamin Matplotlib tidak akan mencoba membuka jendela GUI (Tkinter/Qt) dari 
+# background thread yang dapat menyebabkan aplikasi Force Close (SegFault).
+matplotlib.use('Agg')
+
+logger = logging.getLogger(__name__)
+
 try:
     import xarray as xr
     HAS_XARRAY = True
 except ImportError:
     HAS_XARRAY = False
 
-# Strictly enforce non-interactive backend to prevent GUI Thread locking
-matplotlib.use('Agg')
-logger = logging.getLogger(__name__)
 
 class PostProcEngine:
     """
-    Tier-0 Rendering Engine for D-Flow FM and SWAN Output.
-    Generates transparent heatmap overlays mapped to precise bounds.
+    [TIER-0] Mesin ekstraksi dan rendering NetCDF (.nc) menggunakan Xarray dan Dask.
+    Memiliki dua kemampuan utama:
+    1. Render Overlay: Memotong frame spasial untuk animasi Leaflet Heatmap.
+    2. Point Validation: Mengekstrak time-series 1D untuk dibandingkan dengan observasi CSV.
     """
-    
+
     @staticmethod
-    def render_overlay(nc_path: str, target_var: str, time_idx: int, epsg: str, out_dir: str) -> dict:
+    def render_overlay(nc_path: str, var_name: str, time_idx: int, epsg: str, out_dir: str) -> dict:
+        """
+        Mengekstrak frame 2D spesifik dari NetCDF, merendernya menjadi gambar transparan (PNG),
+        dan mengkalkulasi batas Bounding Box (Lat/Lon) untuk di-overlay ke Leaflet Peta.
+        """
         if not HAS_XARRAY: 
-            raise ImportError("Library 'xarray' dan 'netCDF4' diperlukan untuk module post-processing.")
-            
-        # 1. Strict I/O Validation
-        if not os.path.exists(nc_path):
-            raise FileNotFoundError(f"File NetCDF tidak ditemukan di: {nc_path}")
+            raise ImportError("Library 'xarray' dan 'netCDF4' diperlukan untuk membaca hasil simulasi.")
             
         os.makedirs(out_dir, exist_ok=True)
-            
+        out_img = os.path.join(out_dir, f"frame_{var_name}_t{time_idx}.png")
+        fig = None
+
         try:
-            logger.info(f"[POSTPROC] Membaca {nc_path} | Target: {target_var} | Time Index Request: {time_idx}")
+            logger.debug(f"[POSTPROC] Mengekstrak frame {time_idx} untuk variabel '{var_name}'...")
             
-            with xr.open_dataset(nc_path) as ds:
-                # 2. Detect Topology Coordinates (Flexible Mesh vs Gridded)
-                if 'mesh2d_face_x' in ds:
-                    ux = ds['mesh2d_face_x'].values
-                    uy = ds['mesh2d_face_y'].values
-                elif 'mesh2d_node_x' in ds:
-                    ux = ds['mesh2d_node_x'].values
-                    uy = ds['mesh2d_node_y'].values
+            # Gunakan engine netcdf4 dan hindari memuat seluruh array ke RAM
+            with xr.open_dataset(nc_path, engine='netcdf4') as ds:
+                if var_name not in ds:
+                    raise KeyError(f"Variabel '{var_name}' tidak ditemukan dalam NetCDF.")
+                
+                # Mengambil informasi waktu
+                times = ds['time'].values
+                max_time_idx = len(times) - 1
+                safe_idx = max(0, min(time_idx, max_time_idx))
+                
+                time_str = pd.to_datetime(times[safe_idx]).strftime('%Y-%m-%d %H:%M:%S')
+                
+                # Ekstraksi koordinat jaring (Topology/Mesh)
+                if 'mesh2d_face_x' in ds and 'mesh2d_face_y' in ds:
+                    # Format D-Flow FM (Flexible Unstructured Mesh)
+                    x_vals = ds['mesh2d_face_x'].values
+                    y_vals = ds['mesh2d_face_y'].values
+                elif 'x' in ds and 'y' in ds:
+                    # Format D-Waves / SWAN (Rectilinear Grid)
+                    X, Y = np.meshgrid(ds['x'].values, ds['y'].values)
+                    x_vals, y_vals = X.flatten(), Y.flatten()
                 else:
-                    # Fallback untuk SWAN gridded output
-                    if 'x' in ds and 'y' in ds:
-                        X, Y = np.meshgrid(ds.x.values, ds.y.values)
-                        ux, uy = X.flatten(), Y.flatten()
-                    else:
-                        raise KeyError("Geometri mesh (mesh2d_face_x/y atau x/y) tidak terdeteksi dalam NetCDF ini.")
+                    raise KeyError("Sistem koordinat spasial (X/Y) tidak dikenali dalam file NetCDF ini.")
 
-                # 3. BUG-06 FIX: Stationary output guard (SWAN tanpa time dimension)
-                has_time = 'time' in ds and getattr(ds['time'], 'ndim', 0) >= 1 and len(ds['time']) > 0
-                num_time_steps = len(ds['time']) if has_time else 1
+                # Ekstraksi Nilai Z berdasarkan index waktu
+                z_array = ds[var_name].isel(time=safe_idx).values.flatten()
                 
-                # Memastikan time_idx selalu dalam batas array yang aman (Clamping)
-                safe_time_idx = max(0, min(time_idx, num_time_steps - 1))
+                # Membersihkan nilai NaN / FillValue (-999.0)
+                valid_mask = ~np.isnan(z_array) & (z_array > -900.0)
+                if not valid_mask.any():
+                    raise ValueError(f"Seluruh frame pada indeks T={safe_idx} bernilai kosong (NaN/Daratan).")
+                    
+                x_clean = x_vals[valid_mask]
+                y_clean = y_vals[valid_mask]
+                z_clean = z_array[valid_mask]
+                
+                v_min, v_max = float(z_clean.min()), float(z_clean.max())
 
-                # 4. Extract Target Variable Data
-                if target_var not in ds:
-                    available_vars = list(ds.data_vars.keys())
-                    raise KeyError(f"Variabel '{target_var}' tidak ada. Variabel tersedia: {available_vars[:5]}...")
+                # Translasi Koordinat (UTM ke WGS84) untuk Bounding Box Leaflet
+                tr = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
+                lon, lat = tr.transform(x_clean, y_clean)
                 
-                var_data = ds[target_var]
-                if has_time and 'time' in var_data.dims:
-                    vals = var_data.isel(time=safe_time_idx).values.flatten()
-                else:
-                    vals = var_data.values.flatten()
-                    
-                # Mitigasi darurat jika ukuran grid topologi dan data val tidak sinkron
-                if len(vals) != len(ux):
-                    logger.warning(f"[POSTPROC] Dimensi tidak sinkron (Vals:{len(vals)} vs Coords:{len(ux)}). Memangkas data berlebih.")
-                    min_len = min(len(vals), len(ux))
-                    vals = vals[:min_len]
-                    ux = ux[:min_len]
-                    uy = uy[:min_len]
+                n, s = float(np.max(lat)), float(np.min(lat))
+                e, w = float(np.max(lon)), float(np.min(lon))
 
-                # 5. Masking Nilai NaN
-                valid_mask = ~np.isnan(vals)
-                ux = ux[valid_mask]
-                uy = uy[valid_mask]
-                vals = vals[valid_mask]
+                # --- RENDERING GAMBAR (TRANSPARENT BACKGROUND) ---
+                # Mematikan axes dan menyisakan murni piksel data untuk overlay peta
+                fig, ax = plt.subplots(figsize=(10, 10))
+                fig.patch.set_alpha(0.0)
+                ax.set_axis_off()
+                ax.margins(0)
                 
-                if len(ux) == 0:
-                    raise ValueError(f"Seluruh frame untuk variabel {target_var} bernilai NaN. Tidak ada yang bisa dirender.")
-                    
-                # 6. Transformasi EPSG ke LatLon (WGS84) untuk Leaflet
-                try:
-                    tr = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
-                except Exception as e:
-                    raise ValueError(f"Kode EPSG tidak valid: {epsg}") from e
-                    
-                lon, lat = tr.transform(ux, uy)
+                # Render heatmap (Scatter digunakan agar kompatibel dengan Unstructured Mesh)
+                cmap = 'jet' if var_name in ['Hsig', 'Tp'] else 'viridis'
+                ax.scatter(lon, lat, c=z_clean, cmap=cmap, s=20, alpha=0.85, edgecolors='none')
                 
-                # Memaksa tipe float absolut untuk keamanan Serialisasi JSON
-                w, e = float(lon.min()), float(lon.max())
-                s, n = float(lat.min()), float(lat.max())
+                plt.savefig(out_img, dpi=120, transparent=True, bbox_inches='tight', pad_inches=0)
 
-                # 7. Safe Matplotlib Rendering
-                fig = None
-                out_img = os.path.join(out_dir, f"overlay_frame_{safe_time_idx}.png")
-                
-                try:
-                    fig = plt.figure(figsize=(10, 10), frameon=False)
-                    ax = fig.add_axes([0, 0, 1, 1])
-                    ax.axis('off')
-                    
-                    # Membatasi outlier dengan kuantil ke-2 dan ke-98 untuk representasi warna yang natural
-                    v_min, v_max = float(np.percentile(vals, 2)), float(np.percentile(vals, 98))
-                    
-                    # Estetika Skripsi CMC Mangrove - Pilihan warna cerdas berdasarkan parameter
-                    cmap_choice = 'jet'
-                    var_lower = target_var.lower()
-                    if 'hs' in var_lower or 'swh' in var_lower or 'sig' in var_lower: 
-                        cmap_choice = 'ocean_r'
-                    elif 'ucy' in var_lower or 'ucx' in var_lower or 'vel' in var_lower: 
-                        cmap_choice = 'twilight'
-                    elif 'sed' in var_lower or 'bed' in var_lower or 'depth' in var_lower: 
-                        cmap_choice = 'copper'
-                    
-                    # Membuat scatter plot transparan sebagai heatmap overlay
-                    ax.scatter(lon, lat, c=vals, cmap=cmap_choice, s=8, alpha=0.85, vmin=v_min, vmax=v_max)
-                    ax.set_xlim(w, e)
-                    ax.set_ylim(s, n)
-                    
-                    plt.savefig(out_img, transparent=True, pad_inches=0, bbox_inches='tight', dpi=200)
-                    logger.debug(f"[POSTPROC] Frame ke-{safe_time_idx} berhasil di-render.")
-                    
-                finally:
-                    # Memory Leak Guard
-                    if fig is not None:
-                        plt.close(fig)
-                        
-                # Ekstraksi timestamp jika ada
-                time_str = str(ds['time'].values[safe_time_idx]) if has_time else 'Static Frame (Stationary)'
-                
                 return {
                     'image_path': out_img,
                     'bounds': {'N': n, 'S': s, 'E': e, 'W': w},
                     'time_str': time_str,
-                    'max_time': num_time_steps - 1,
+                    'max_time': max_time_idx,
                     'v_min': v_min,
                     'v_max': v_max
                 }
                 
         except Exception as e:
-            error_msg = f"[FATAL] Kegagalan Post-Processing pada file {os.path.basename(nc_path)}: {str(e)}\n{traceback.format_exc()}"
+            error_msg = f"[FATAL] Kegagalan Render Overlay pada file {os.path.basename(nc_path)}: {str(e)}\n{traceback.format_exc()}"
             logger.error(error_msg)
             raise RuntimeError(f"Gagal me-render NetCDF overlay: {str(e)}") from e
+            
+        finally:
+            if fig is not None:
+                fig.clf() # Clean internal layout
+                plt.close(fig) # Prevent Memory Leak
+            gc.collect()
 
     @staticmethod
     def run_point_validation(nc_path: str, csv_path: str, target_var: str, lat: float, lon: float, epsg: str, out_dir: str) -> dict:
@@ -164,29 +139,33 @@ class PostProcEngine:
             raise ImportError("Library 'xarray' dan 'pandas' diperlukan untuk validasi.")
             
         os.makedirs(out_dir, exist_ok=True)
-        import pandas as pd
+        fig = None
         
         try:
-            logger.info(f"[VALIDATION] Memulai kalibrasi titik. Model: {nc_path} | Obs: {csv_path}")
+            logger.info(f"[VALIDATION] Memulai kalibrasi titik stasiun. Model: {nc_path} | Obs: {csv_path}")
             
-            # 1. Mapping Variabel UI ke Nama Kolom Asli
+            # 1. Mapping Variabel UI ke Nama Kolom Asli Model dan Observasi
             var_map = {
                 'Hsig (Tinggi Gelombang)': ('Hsig', 'Hs', 'm'),
                 'Tp (Periode Puncak)': ('Tp', 'Tp', 's')
             }
             nc_var, csv_var, unit = var_map.get(target_var, ('Hsig', 'Hs', 'm'))
             
-            # 2. Baca CSV Observasi (Ground Truth)
+            # 2. Baca CSV Observasi (Ground Truth WaveSpectra)
             df_obs = pd.read_csv(csv_path)
-            # Pastikan kolom timestamp dibaca sebagai Datetime naive (tanpa timezone)
+            if 'timestamp' not in df_obs.columns:
+                raise KeyError("File CSV observasi harus memiliki kolom 'timestamp'.")
+                
+            # Pastikan kolom timestamp dibaca sebagai Datetime naive (tanpa timezone) dan HARUS TERURUT
             df_obs['timestamp'] = pd.to_datetime(df_obs['timestamp']).dt.tz_localize(None)
             df_obs = df_obs[['timestamp', csv_var]].dropna().sort_values('timestamp')
             
-            # 3. Baca NetCDF Model dan Transformasi Koordinat Stasiun
+            # 3. Translasi Koordinat Stasiun (WGS84 -> UTM Model)
             tr = Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
             target_x, target_y = tr.transform(lon, lat)
             
-            with xr.open_dataset(nc_path) as ds:
+            # 4. Baca NetCDF Model & Lakukan Ekstraksi (Nearest Neighbor)
+            with xr.open_dataset(nc_path, engine='netcdf4') as ds:
                 if nc_var not in ds:
                     raise KeyError(f"Variabel Model '{nc_var}' tidak ditemukan di NetCDF.")
                     
@@ -199,25 +178,36 @@ class PostProcEngine:
                 else:
                     raise KeyError("Geometri mesh tidak terdeteksi untuk ekstraksi titik.")
                 
-                # 4. Nearest Neighbor Extraction (Titik terdekat)
+                # Nearest Neighbor Extraction menggunakan Hipotenusa
                 dists = np.hypot(ux - target_x, uy - target_y)
                 min_idx = np.nanargmin(dists)
                 closest_dist = dists[min_idx]
                 
                 logger.info(f"[VALIDATION] Titik terdekat ditemukan pada jarak {closest_dist:.2f} meter dari koordinat input.")
                 
-                # Ekstrak rentetan waktu
+                # Ekstrak rentetan waktu model
                 model_times = pd.to_datetime(ds['time'].values).tz_localize(None)
                 
-                # Reshape array ke 2D (Time, Space) untuk mengekstrak titik spesifik secara konsisten
-                val_array = ds[nc_var].values
-                val_array_2d = val_array.reshape(len(model_times), -1)
-                model_vals = val_array_2d[:, min_idx]
+                # Mengambil nilai time-series di node/face spesifik (min_idx)
+                try:
+                    if len(ds[nc_var].dims) == 2:
+                        # Asumsi [time, face]
+                        model_vals = ds[nc_var].isel({ds[nc_var].dims[1]: min_idx}).values
+                    else:
+                        # Flattening paksa jika dimensi kompleks
+                        val_array = ds[nc_var].values
+                        val_array_2d = val_array.reshape(len(model_times), -1)
+                        model_vals = val_array_2d[:, min_idx]
+                except Exception as ex:
+                    raise ValueError(f"Struktur dimensi {nc_var} tidak didukung: {ex}")
                 
                 df_model = pd.DataFrame({'timestamp': model_times, 'model_val': model_vals})
-                df_model = df_model.dropna().sort_values('timestamp')
+                # Membuang fill values dan memastikan baris terurut (Prasyarat mutlak merge_asof)
+                df_model = df_model[(df_model['model_val'] > -900) & (~df_model['model_val'].isna())]
+                df_model = df_model.sort_values('timestamp')
                 
-            # 5. Sinkronisasi Waktu (Merge Asof - Mencari waktu beririsan terdekat toleransi 2 jam)
+            # 5. Sinkronisasi Waktu (Merge Asof)
+            # Mencari waktu observasi dan model yang beririsan (toleransi max 2 jam)
             df_merge = pd.merge_asof(
                 df_obs, df_model, 
                 on='timestamp', direction='nearest', 
@@ -225,7 +215,7 @@ class PostProcEngine:
             ).dropna()
             
             if df_merge.empty:
-                raise ValueError("Tidak ada irisan waktu (Timestamp) yang cocok antara Model ERA5 dan Data Wave Gauge Observasi.")
+                raise ValueError("TIDAK ADA IRISAN WAKTU. Tanggal/Jam observasi dan hasil model tidak selaras. Harap periksa input Anda.")
                 
             y_obs = df_merge[csv_var].values
             y_mod = df_merge['model_val'].values
@@ -234,66 +224,66 @@ class PostProcEngine:
             # 6. Komputasi Statistik Matematika
             rmse = np.sqrt(np.mean((y_mod - y_obs)**2))
             bias = np.mean(y_mod - y_obs)
-            # Mencegah pembagian nol pada korelasi
+            
             r2 = 0.0
             if np.std(y_obs) > 0 and np.std(y_mod) > 0:
                 r2 = np.corrcoef(y_obs, y_mod)[0, 1] ** 2
                 
-            # 7. Render Plot Validasi (Enterprise Fintech Slate Style)
-            fig = None
+            # 7. Render Plot Validasi (Fintech Slate Style)
             out_plot = os.path.join(out_dir, f"Validation_{csv_var}_Plot.png")
             
-            try:
-                fig = plt.figure(figsize=(12, 6))
-                fig.patch.set_facecolor('#1E2128') # Sesuai QGroupBox pane
+            fig = plt.figure(figsize=(12, 6))
+            fig.patch.set_facecolor('#1E2128') # Sesuai QGroupBox pane UI Modul 6
+            
+            # --- Subplot 1: Time Series Overlay ---
+            ax1 = plt.subplot(1, 2, 1)
+            ax1.set_facecolor('#0F172A')
+            ax1.plot(times, y_obs, 'o-', color='#F7C159', label='Observasi Lapangan', linewidth=2, markersize=4)
+            ax1.plot(times, y_mod, '-', color='#38BDF8', label='Simulasi Model', linewidth=2.5)
+            ax1.set_title(f"Time Series Overlay - {nc_var}", color='#FFFFFF', fontweight='bold', pad=10)
+            ax1.set_ylabel(f"{nc_var} ({unit})", color='#9CA3AF')
+            ax1.tick_params(colors='#9CA3AF', rotation=45)
+            ax1.grid(color='#3A3F4A', linestyle='--', alpha=0.7)
+            ax1.legend(facecolor='#1E2128', edgecolor='#3A3F4A', labelcolor='white')
+            for spine in ax1.spines.values(): spine.set_edgecolor('#3A3F4A')
+            
+            # --- Subplot 2: Scatter Plot ---
+            ax2 = plt.subplot(1, 2, 2)
+            ax2.set_facecolor('#0F172A')
+            ax2.scatter(y_obs, y_mod, color='#42E695', s=40, alpha=0.8, edgecolor='#0F172A')
+            
+            # Garis Identitas (1:1 Line)
+            min_val = min(np.min(y_obs), np.min(y_mod))
+            max_val = max(np.max(y_obs), np.max(y_mod))
+            ax2.plot([min_val, max_val], [min_val, max_val], 'r--', label='1:1 Perfect Match', alpha=0.7)
+            
+            ax2.set_title(f"Korelasi Scatter Plot (R² = {r2:.3f})", color='#FFFFFF', fontweight='bold', pad=10)
+            ax2.set_xlabel(f"Observasi {nc_var} ({unit})", color='#9CA3AF')
+            ax2.set_ylabel(f"Model {nc_var} ({unit})", color='#9CA3AF')
+            ax2.tick_params(colors='#9CA3AF')
+            ax2.grid(color='#3A3F4A', linestyle='--', alpha=0.7)
+            ax2.legend(facecolor='#1E2128', edgecolor='#3A3F4A', labelcolor='white')
+            for spine in ax2.spines.values(): spine.set_edgecolor('#3A3F4A')
+            
+            plt.tight_layout()
+            plt.savefig(out_plot, dpi=150, bbox_inches='tight')
                 
-                # Subplot 1: Time Series Overlay
-                ax1 = plt.subplot(1, 2, 1)
-                ax1.set_facecolor('#0F172A')
-                ax1.plot(times, y_obs, 'o-', color='#F7C159', label='Observasi (Wave Gauge)', linewidth=2, markersize=4)
-                ax1.plot(times, y_mod, '-', color='#38BDF8', label='Simulasi (D-WAVES)', linewidth=2.5)
-                ax1.set_title(f"Time Series Overlay - {nc_var}", color='#FFFFFF', fontweight='bold')
-                ax1.set_ylabel(f"{nc_var} ({unit})", color='#9CA3AF')
-                ax1.tick_params(colors='#9CA3AF', rotation=45)
-                ax1.grid(color='#3A3F4A', linestyle='--', alpha=0.7)
-                ax1.legend(facecolor='#1E2128', edgecolor='#3A3F4A', labelcolor='white')
-                for spine in ax1.spines.values(): spine.set_edgecolor('#3A3F4A')
-                
-                # Subplot 2: Scatter Plot
-                ax2 = plt.subplot(1, 2, 2)
-                ax2.set_facecolor('#0F172A')
-                ax2.scatter(y_obs, y_mod, color='#42E695', s=30, alpha=0.8, edgecolor='#0F172A')
-                
-                # Garis Identitas (1:1 Line)
-                min_val = min(np.min(y_obs), np.min(y_mod))
-                max_val = max(np.max(y_obs), np.max(y_mod))
-                ax2.plot([min_val, max_val], [min_val, max_val], 'r--', label='1:1 Perfect Match', alpha=0.7)
-                
-                ax2.set_title(f"Scatter Plot (R² = {r2:.3f})", color='#FFFFFF', fontweight='bold')
-                ax2.set_xlabel(f"Observasi {nc_var}", color='#9CA3AF')
-                ax2.set_ylabel(f"Model {nc_var}", color='#9CA3AF')
-                ax2.tick_params(colors='#9CA3AF')
-                ax2.grid(color='#3A3F4A', linestyle='--', alpha=0.7)
-                ax2.legend(facecolor='#1E2128', edgecolor='#3A3F4A', labelcolor='white')
-                for spine in ax2.spines.values(): spine.set_edgecolor('#3A3F4A')
-                
-                plt.tight_layout()
-                plt.savefig(out_plot, dpi=150, bbox_inches='tight')
-                
-            finally:
-                if fig is not None:
-                    plt.close(fig)
-                    
             logger.info(f"[VALIDATION] Komputasi sukses. RMSE: {rmse:.3f}, Bias: {bias:.3f}, R2: {r2:.3f}")
             return {
-                'rmse': rmse,
-                'bias': bias,
-                'r2': r2,
+                'rmse': float(rmse),
+                'bias': float(bias),
+                'r2': float(r2),
                 'plot_path': out_plot,
-                'dist': closest_dist
+                'dist': float(closest_dist)
             }
             
         except Exception as e:
             error_msg = f"[FATAL] Kegagalan Ekstraksi/Validasi Point: {str(e)}\n{traceback.format_exc()}"
             logger.error(error_msg)
             raise RuntimeError(f"Gagal melakukan validasi data: {str(e)}") from e
+            
+        finally:
+            if fig is not None:
+                fig.clf()
+                plt.close(fig)
+            gc.collect() # Safeguard from Pandas/Matplotlib memory bloat
