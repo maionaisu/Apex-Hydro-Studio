@@ -28,7 +28,7 @@ from core.state_manager import app_state
 
 logger = logging.getLogger(__name__)
 
-# --- ENTERPRISE QSS STYLESHEETS (FINTECH SLATE ADAPTATION) ---
+# --- ENTERPRISE QSS STYLESHEETS ---
 STYLE_GROUPBOX = """
     QGroupBox { background-color: #2D3139; border: 1px solid #3A3F4A; border-radius: 12px; margin-top: 15px; padding-top: 35px; font-weight: 800; color: #FFFFFF; font-size: 14px; }
     QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 6px 16px; background-color: transparent; color: #8FC9DC; top: 8px; left: 10px; }
@@ -45,7 +45,6 @@ STYLE_INPUTS = """
 STYLE_TABLE = """
     QTableWidget { background-color: #1F2227; color: #FFFFFF; gridline-color: #3A3F4A; border: 1px solid #3A3F4A; border-radius: 8px; font-family: 'Consolas', monospace; }
     QHeaderView::section { background-color: #2D3139; color: #8FC9DC; padding: 8px; font-weight: 800; border: none; border-bottom: 1px solid #3A3F4A; border-right: 1px solid #3A3F4A; }
-    QTableWidget::item:selected { background-color: #595FF7; color: #FFFFFF; }
 """
 STYLE_SEGMENTED_TAB = """
     QTabWidget#SegmentedTab::pane { border: 1px solid #3A3F4A; border-radius: 12px; background: transparent; top: -1px; }
@@ -76,6 +75,8 @@ class Modul4Mesh(QWidget):
         super().__init__(parent)
         self.file_bathy = ""
         self.file_ldb = ""
+        self._syncing = False
+        
         self.setup_ui()
         app_state.state_updated.connect(self.on_global_state_changed)
 
@@ -176,13 +177,13 @@ class Modul4Mesh(QWidget):
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.tbl_bbox.setItem(j, 0, item)
             
-        self.tbl_bbox.itemChanged.connect(self.manual_update_bbox_vertical)
+        # [BUG FIX]: Hapus event koneksi otomatis agar tidak menggambar hantu saat inisialisasi
         l1.addWidget(self.tbl_bbox)
         
         btn_m1 = QPushButton("Update Area Mikro")
         btn_m1.setObjectName("OutlineBtn")
         btn_m1.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_m1.clicked.connect(self.manual_map_update)
+        btn_m1.clicked.connect(self.manual_bbox_update)
         l1.addWidget(btn_m1)
         l1.addStretch()
         self.tabs_aoi.addTab(t1, "Set BBox Mikro")
@@ -205,12 +206,13 @@ class Modul4Mesh(QWidget):
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.tbl_man.setItem(i//2, i%2, item)
             
+        # [BUG FIX]: Hapus koneksi otomatis pada tbl_man
         l2.addWidget(self.tbl_man)
         
         btn_m2 = QPushButton("Update Line Profiles")
         btn_m2.setObjectName("OutlineBtn")
         btn_m2.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_m2.clicked.connect(self.manual_map_update)
+        btn_m2.clicked.connect(self.manual_transect_update)
         l2.addWidget(btn_m2)
         l2.addStretch()
         self.tabs_aoi.addTab(t2, "Transect")
@@ -255,7 +257,6 @@ class Modul4Mesh(QWidget):
         fg1 = QVBoxLayout(fgrp1)
         fg1.setSpacing(16)
         
-        # Dual AOI Info
         aoi_info = QLabel("<b>Makro (Outer):</b> Otomatis setara Grid ERA5 (Read-Only)<br><b>Mikro (Inner):</b> Gambarlah kotak di Peta (Area Refinement)")
         aoi_info.setStyleSheet("color: #9CA3AF; font-size: 13px; line-height: 1.4;")
         fg1.addWidget(aoi_info)
@@ -265,7 +266,6 @@ class Modul4Mesh(QWidget):
         self.lbl_inner_bbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
         fg1.addWidget(self.lbl_inner_bbox)
         
-        # LDB / Coastline
         h_shp = QHBoxLayout()
         btn_shp = QPushButton("🗺️ Coastline (.shp / .ldb)")
         btn_shp.setObjectName("OutlineBtn")
@@ -277,19 +277,18 @@ class Modul4Mesh(QWidget):
         h_shp.addWidget(self.lbl_coast_stat, stretch=1)
         fg1.addLayout(h_shp)
         
-        # Checkbox Clip Landward
         self.chk_clip_land = QCheckBox("Hapus Node Daratan (Clip Landward Edge)")
         self.chk_clip_land.setChecked(True)
         self.chk_clip_land.setToolTip("Otomatis menghapus mesh yang tumpang tindih dengan poligon daratan.")
         fg1.addWidget(self.chk_clip_land)
         
-        # Transect (Only D-Flow)
         fg1.addWidget(QLabel("Titik Transek (Morphodynamics DoC):", styleSheet="color: #8FC9DC; font-weight: 800; font-size: 13px; margin-top: 10px;"))
+        
+        # Tabel D-Flow hanya sebagai representasi visual state, tidak perlu itemChanged otomatis
         self.tbl_trans = QTableWidget(2, 2)
         self.tbl_trans.setHorizontalHeaderLabels(["Lat (Y)", "Lon (X)"])
         self.tbl_trans.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tbl_trans.setMaximumHeight(90)
-        self.tbl_trans.itemChanged.connect(self.manual_transect_update)
         fg1.addWidget(self.tbl_trans)
         
         fc1.addWidget(fgrp1)
@@ -322,8 +321,7 @@ class Modul4Mesh(QWidget):
         self.chk_riemann.setChecked(True)
         fg2.addRow("", self.chk_riemann)
         
-        # Resolusi Sliders
-        self.sld_fmax, self.inp_fmax = self.create_slider_row(50, 1000, 200)
+        self.sld_fmax, self.inp_fmax = self.create_slider_row(50, 1000, 750) # Coarse default 750
         fg2.addRow(QLabel("Res. Kasar (Outer):", styleSheet="color: #8FC9DC; font-weight: bold;"), self.make_hbox(self.sld_fmax, self.inp_fmax))
         
         self.sld_fmin, self.inp_fmin = self.create_slider_row(5, 100, 12)
@@ -349,7 +347,6 @@ class Modul4Mesh(QWidget):
         wave_lay.setContentsMargins(20, 24, 20, 20)
         wave_lay.setSpacing(24)
         
-        # D-WAVES LEFT: Domain Info
         wc1 = QVBoxLayout()
         wgrp1 = QGroupBox("Domain Gelombang & Geometri Grid")
         wg1 = QVBoxLayout(wgrp1)
@@ -365,7 +362,6 @@ class Modul4Mesh(QWidget):
         self.lbl_outer_bbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
         wg1.addWidget(self.lbl_outer_bbox)
         
-        # Resolusi D-Waves
         w_form = QFormLayout()
         w_form.setVerticalSpacing(16)
         w_form.setHorizontalSpacing(16)
@@ -379,7 +375,6 @@ class Modul4Mesh(QWidget):
         wc1.addStretch()
         wave_lay.addLayout(wc1, stretch=1)
         
-        # D-WAVES RIGHT: Physics Params
         wc2 = QVBoxLayout()
         wgrp2 = QGroupBox("Parameter Gelombang Fisik (MDW)")
         wg2 = QFormLayout(wgrp2)
@@ -399,7 +394,6 @@ class Modul4Mesh(QWidget):
         self.inp_w_level.setToolTip("Hanya digunakan pada Tahap 2 (D-WAVES Standalone) sebagai elevasi referensi pengganti pasang surut D-FLOW.")
         wg2.addRow(QLabel("Elevasi Air Konstan (m):", styleSheet="color: #F7C159; font-weight: bold;"), self.inp_w_level)
         
-        # Read-only display of ERA5 Wave Initial Conditions
         self.lbl_w_ic = QLabel("Hs: - m | Tp: - s | Dir: - °")
         self.lbl_w_ic.setStyleSheet("color: #595FF7; font-weight: bold; font-family: 'Consolas', monospace; font-size: 13px; padding: 10px; background: #1F2227; border-radius: 8px; border: 1px solid #3A3F4A;")
         wg2.addRow(QLabel("Initial Condition:", styleSheet="color: #9CA3AF; font-weight: bold;"), self.lbl_w_ic)
@@ -411,7 +405,6 @@ class Modul4Mesh(QWidget):
         self.mode_tabs.addTab(tab_wave, "〰️ D-WAVES (Rectilinear Grid)")
         scroll_layout.addWidget(self.mode_tabs)
 
-        # Estimasi Cost Node Global
         self.lbl_cost = QLabel("Estimasi Beban Komputasi: Menghitung...")
         self.lbl_cost.setStyleSheet("background-color: #1F2227; padding: 12px; border: 1px solid #3A3F4A; border-radius: 8px; font-size: 13px; font-weight: bold; color: #9CA3AF;")
         self.lbl_cost.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -470,7 +463,6 @@ class Modul4Mesh(QWidget):
     # UI HELPER FUNCTIONS
     # --------------------------------------------------------------------------
     def _update_build_btn_text(self, text: str) -> None:
-        """Memperbarui teks tombol eksekusi berdasarkan mode kalibrasi yang dipilih."""
         if "Tahap 1" in text:
             self.btn_mesh.setText("⚡ RAKIT D-FLOW STANDALONE (.mdu)")
         elif "Tahap 2" in text:
@@ -502,7 +494,6 @@ class Modul4Mesh(QWidget):
     # --------------------------------------------------------------------------
 
     def on_global_state_changed(self, key: str) -> None:
-        """Auto-Sync Boundary Dir, ERA5 Outer Box, and Wave Initial Conditions."""
         state = app_state.get_all()
         
         if key in ['Hs', 'Tp', 'Dir']:
@@ -521,15 +512,16 @@ class Modul4Mesh(QWidget):
                 self.log_mesh.append(f"[AUTO-SYNC] Arah gelombang ERA5 ({dir_val:.1f}°) terdeteksi. Batas laut disetel ke: {bnd}.")
                 
         if key == 'mesh_bbox':
-            # Ini adalah Outer BBox (Dari Modul 1 ERA5)
             outer = state.get('mesh_bbox')
             if outer:
                 self.lbl_outer_bbox.setText(f"✓ Makro BBox: N{outer['N']:.2f}, S{outer['S']:.2f}, E{outer['E']:.2f}, W{outer['W']:.2f}")
                 self.lbl_outer_bbox.setStyleSheet("color:#42E695; font-weight:bold; font-size:12px; background-color: rgba(66, 230, 149, 0.1); padding: 10px; border-radius: 6px; border: 1px solid #42E695;")
                 
-                # Menggambar batas ERA5 sebagai referensi Outer AOI (Garis putus-putus Merah/Coral)
                 js_outer = f"var outB = [[{outer['S']}, {outer['W']}], [{outer['N']}, {outer['E']}]]; L.rectangle(outB, {{color: '#FC3F4D', weight: 2, fillOpacity: 0.05, dashArray: '5, 10'}}).addTo(map); map.fitBounds(outB);"
                 self.web_mesh.page().runJavaScript(js_outer)
+                
+            # [ENTERPRISE BUG-FIX]: Trigger ulang kalkulasi biaya HPC saat batas makro berubah
+            self.update_sliders()
 
     def load_mesh_file(self, ftype: str) -> None:
         p, _ = QFileDialog.getOpenFileName(self, "Pilih File", "", "XYZ Data (*.xyz)")
@@ -544,7 +536,6 @@ class Modul4Mesh(QWidget):
         
         try:
             if p.endswith('.ldb'):
-                # Native format Delft3D
                 self.file_ldb = os.path.abspath(p)
                 self.lbl_coast_stat.setText(f"✓ LDB Native")
                 self.lbl_coast_stat.setStyleSheet("color: #595FF7;")
@@ -576,7 +567,6 @@ class Modul4Mesh(QWidget):
                             coords = list(g.coords)
                         else: continue
                             
-                        # Format absolut mengikuti standar Delft3D (.ldb)
                         f.write(f"Bnd_{bnd_counter}\n{len(coords)} 2\n")
                         for coord in coords: 
                             f.write(f"{coord[0]:.3f} {coord[1]:.3f}\n")
@@ -597,7 +587,8 @@ class Modul4Mesh(QWidget):
             self.log_mesh.append(f"❌ Gagal memproses Coastline: {str(e)}")
 
     def update_inner_bbox(self, d: dict) -> None: 
-        """Ditangkap dari Leaflet Map Draw Tool. Disimpan sebagai Inner BBox (Area Mikro/Clungup)."""
+        """Ditangkap dari alat gambar kotak pada peta Leaflet."""
+        self._syncing = True
         app_state.update('inner_bbox', d)
         self.lbl_inner_bbox.setText("✓ Area Mikro (Inner) Tersimpan")
         self.lbl_inner_bbox.setStyleSheet("color:#595FF7; font-weight:bold; font-size:12px; background-color: rgba(89, 95, 247, 0.1); padding: 10px; border-radius: 6px; border: 1px solid #595FF7;")
@@ -609,8 +600,11 @@ class Modul4Mesh(QWidget):
         self.tbl_bbox.setItem(3, 0, QTableWidgetItem(f"{d['W']:.4f}"))
         self.tbl_bbox.blockSignals(False)
         self.update_sliders()
+        self._syncing = False
 
     def update_mesh_transect(self, d: list) -> None: 
+        """Ditangkap dari alat gambar garis poli (Polyline) pada peta Leaflet."""
+        self._syncing = True
         app_state.update('transect', d)
         self.tbl_trans.setRowCount(len(d))
         self.tbl_trans.blockSignals(True)
@@ -620,14 +614,34 @@ class Modul4Mesh(QWidget):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.tbl_trans.setItem(i, col, item)
         self.tbl_trans.blockSignals(False)
+        self._syncing = False
+
+    def manual_bbox_update(self) -> None:
+        """Dipicu HANYA jika tombol 'Update Area Mikro' diklik."""
+        try:
+            n = float(self.tbl_bbox.item(0,0).text())
+            s = float(self.tbl_bbox.item(1,0).text())
+            e = float(self.tbl_bbox.item(2,0).text())
+            w = float(self.tbl_bbox.item(3,0).text())
+            
+            if n > s and e > w:
+                app_state.update('inner_bbox', {'N': n, 'S': s, 'E': e, 'W': w})
+                js_box = f"addGeoJSON({{\"type\":\"Polygon\",\"coordinates\":[[[{w},{s}],[{e},{s}],[{e},{n}],[{w},{n}],[{w},{s}]]]}}, '#595FF7');"
+                self.web_mesh.page().runJavaScript("clearMap(); " + js_box)
+                self.log_mesh.append("[SYSTEM] BBox Peta berhasil diperbarui secara manual.")
+                self.update_sliders()
+            else:
+                QMessageBox.warning(self, "Galat Logika", "Koordinat terbalik. N harus lebih besar dari S, E harus lebih besar dari W.")
+        except Exception: 
+            pass
 
     def manual_transect_update(self) -> None:
-        """Dipanggil ketika user mengubah nilai koordinat transek pada tabel manual"""
+        """Dipicu HANYA jika tombol 'Update Line Profiles' diklik."""
         coords = []
-        for i in range(self.tbl_trans.rowCount()):
+        for i in range(self.tbl_man.rowCount()):
             try:
-                lat = float(self.tbl_trans.item(i,0).text())
-                lon = float(self.tbl_trans.item(i,1).text())
+                lat = float(self.tbl_man.item(i,0).text())
+                lon = float(self.tbl_man.item(i,1).text())
                 coords.append([lat, lon]) 
             except Exception: pass
             
@@ -635,69 +649,61 @@ class Modul4Mesh(QWidget):
             app_state.update('transect', coords)
             js_line = f"addGeoJSON({{\"type\":\"LineString\",\"coordinates\":{json.dumps([[c[1], c[0]] for c in coords])}}}, '#8FC9DC');"
             self.web_mesh.page().runJavaScript(js_line)
-
-    def manual_map_update(self) -> None:
-        try:
-            # 1. BBox Check 
-            try:
-                n = float(self.tbl_bbox.item(0,0).text())
-                s = float(self.tbl_bbox.item(1,0).text())
-                e = float(self.tbl_bbox.item(2,0).text())
-                w = float(self.tbl_bbox.item(3,0).text())
-                
-                if n > s and e > w:
-                    app_state.update('inner_bbox', {'N': n, 'S': s, 'E': e, 'W': w})
-                    # Gambar kotak Inner (Mikro) dengan warna Indigo
-                    js_box = f"addGeoJSON({{\"type\":\"Polygon\",\"coordinates\":[[[{w},{s}],[{e},{s}],[{e},{n}],[{w},{n}],[{w},{s}]]]}}, '#595FF7');"
-                    self.web_mesh.page().runJavaScript(js_box)
-            except Exception: pass
-            
-            # 2. Transect Check
-            coords = []
-            for i in range(self.tbl_man.rowCount()):
-                try:
-                    lat = float(self.tbl_man.item(i,0).text())
-                    lon = float(self.tbl_man.item(i,1).text())
-                    coords.append([lat, lon]) 
-                except Exception: pass
-                
-            if len(coords) >= 2:
-                app_state.update('transect', coords)
-                js_line = f"addGeoJSON({{\"type\":\"LineString\",\"coordinates\":{json.dumps([[c[1], c[0]] for c in coords])}}}, '#8FC9DC');"
-                self.web_mesh.page().runJavaScript(js_line)
-                
-            self.log_mesh.append("[SYSTEM] Kanvas Web Map berhasil diperbarui dari Input Manual.")
-        except Exception as e: 
-            self.log_mesh.append(f"[WARNING] Gagal update map dari tabel manual: {str(e)}")
+            self.log_mesh.append("[SYSTEM] Garis Transek berhasil diperbarui secara manual.")
 
     def update_sliders(self) -> None:
+        """
+        [ENTERPRISE BUG-FIX] Kalkulasi Cost Numerik yang Akurat.
+        Memisahkan estimasi jumlah node antara area Macro (kasar) dan Micro (halus)
+        agar sistem tidak asal menebak beban HPC 'BERAT' pada area yang dominan kasar.
+        """
         max_r = self.sld_fmax.value()
         min_r = self.sld_fmin.value()
         
         if min_r >= max_r: 
-            self.lbl_cost.setText("⚠ ERROR: Resolusi Pesisir (Min) tidak boleh >= Resolusi Lepas Pantai (Max).")
+            self.lbl_cost.setText("⚠ ERROR: Resolusi Halus (Inner) tidak boleh >= Resolusi Kasar (Outer).")
             self.lbl_cost.setStyleSheet("color: #FC3F4D; font-weight:bold; font-size:13px; background-color: rgba(252, 63, 77, 0.1); padding: 12px; border-radius: 8px; border: 1px solid #FC3F4D;")
             return
             
-        area_m2 = 25000000 
-        aoi = app_state.get('mesh_bbox') # Menggunakan area makro sebagai acuan
+        macro = app_state.get('mesh_bbox')
+        micro = app_state.get('inner_bbox')
         
-        if aoi: 
-            area_m2 = abs(aoi['E'] - aoi['W']) * 111320 * abs(aoi['N'] - aoi['S']) * 110540 
+        # Konversi sederhana derajat ke meter: 1 deg = ~111,320 meter ekuator
+        macro_area_m2 = 0
+        micro_area_m2 = 0
+        
+        if macro:
+            macro_area_m2 = abs(macro['E'] - macro['W']) * 111320 * abs(macro['N'] - macro['S']) * 110540 
             
-        est_nodes = area_m2 / (((max_r + min_r) / 2.0)**2)
+        if micro:
+            micro_area_m2 = abs(micro['E'] - micro['W']) * 111320 * abs(micro['N'] - micro['S']) * 110540
+            
+        # Jika belum ada AOI sama sekali, gunakan angka default (Contoh: area 5x5 km)
+        if macro_area_m2 == 0 and micro_area_m2 == 0:
+            macro_area_m2 = 25000000 
+            
+        # Kurangi area luar agar tidak dihitung dua kali
+        outer_area_m2 = max(0, macro_area_m2 - micro_area_m2)
         
-        if est_nodes < 25000:
-            status, color = "🟢 Ringan (PC/Laptop)", "#42E695"
+        # Hitung jumlah titik (nodes)
+        nodes_outer = outer_area_m2 / (max_r ** 2) if max_r > 0 else 0
+        nodes_inner = micro_area_m2 / (min_r ** 2) if min_r > 0 else 0
+        
+        est_nodes = nodes_outer + nodes_inner
+        
+        if est_nodes < 30000:
+            status, color = "🟢 Ringan (PC/Laptop Biasa)", "#42E695"
             bg, brd = "rgba(66, 230, 149, 0.1)", "#42E695"
-        elif est_nodes < 60000:
-            status, color = "🟡 Menengah (Workstation)", "#F7C159"
+        elif est_nodes < 100000:
+            status, color = "🟡 Menengah (Workstation i7/Ryzen 7)", "#F7C159"
             bg, brd = "rgba(247, 193, 89, 0.1)", "#F7C159"
         else:
-            status, color = "🔴 BERAT (Wajib HPC/Superkomputer)", "#FC3F4D"
+            status, color = "🔴 BERAT (Membutuhkan HPC/Superkomputer)", "#FC3F4D"
             bg, brd = "rgba(252, 63, 77, 0.1)", "#FC3F4D"
             
-        self.lbl_cost.setText(f"Luas Area: {area_m2/1e6:.1f} km² | Estimasi Komputasi: ~{int(est_nodes):,} Nodes | {status}")
+        # Mengubah luas dari meter persegi ke kilometer persegi untuk UI
+        total_km2 = max(macro_area_m2, micro_area_m2) / 1e6
+        self.lbl_cost.setText(f"Cakupan Geografis: {total_km2:.1f} km² | Beban: ~{int(est_nodes):,} Titik Komputasi (Nodes) | {status}")
         self.lbl_cost.setStyleSheet(f"color: {color}; font-weight:bold; font-size:13px; background-color:{bg}; padding: 12px; border-radius: 8px; border: 1px solid {brd};")
 
     # --------------------------------------------------------------------------
@@ -708,14 +714,14 @@ class Modul4Mesh(QWidget):
         if hasattr(self, 'doc_w') and self.doc_w.isRunning(): return
         
         if not self.file_bathy or not app_state.get('transect') or app_state.get('Hs', 0) == 0: 
-            QMessageBox.critical(self, "Syarat Kurang", "Batimetri, Garis Transek, dan Parameter Gelombang (Hs) dari Modul 1 wajib terisi.")
+            QMessageBox.critical(self, "Syarat Kurang", "Berkas Batimetri (.xyz), Garis Transek, dan Parameter Gelombang (Hs) dari Modul ERA5 wajib ada.")
             return
             
         self.doc_w = DepthOfClosure2DWorker(self.file_bathy, app_state.get('transect'), app_state.get('He', 1.5), app_state.get('EPSG', '32749'))
         self.doc_w.log_signal.connect(self.log_mesh.append)
         
         def on_doc_done(success: bool):
-            if success: self.log_mesh.append("✅ Depth of Closure (DoC) terkunci di Global State.")
+            if success: self.log_mesh.append("✅ Depth of Closure (DoC) telah dikunci ke Global State.")
             self.doc_w.deleteLater()
             
         self.doc_w.doc_val_signal.connect(lambda v: app_state.update('DoC', v))
@@ -733,24 +739,21 @@ class Modul4Mesh(QWidget):
 
         state = app_state.get_all()
         
-        # [ENTERPRISE GUARD]: Waktu simulasi Mutlak diperlukan
         if not state.get('sim_start_time') or not state.get('sim_end_time'):
-            QMessageBox.critical(self, "Fatal Time Desync", "Rentang waktu simulasi belum dikunci dari Modul 1. Hal ini akan menggagalkan DIMR Engine. Silakan set waktu awal dan akhir di Modul 1 ERA5.")
+            QMessageBox.critical(self, "Waktu Tidak Selaras", "Rentang waktu simulasi belum dikunci dari Modul 1. Mesin DIMR membutuhkan ketetapan waktu mutlak.")
             return
 
-        # Tentukan Mode Build dari ComboBox
         mode_text = self.cmb_build_mode.currentText()
         if "Tahap 1" in mode_text: b_mode = "dflow_only"
         elif "Tahap 2" in mode_text: b_mode = "dwaves_only"
         else: b_mode = "coupled"
         
-        # Gabungan parameter D-FLOW dan D-WAVES
         p = {
             'he': state.get('He', 1.5), 
             'doc': state.get('DoC', 0), 
             'epsg': state.get('EPSG', '32749'), 
-            'aoi_bounds': state.get('mesh_bbox'), # Outer BBox
-            'inner_bbox': state.get('inner_bbox'), # Inner BBox (Clungup)
+            'aoi_bounds': state.get('mesh_bbox'), 
+            'inner_bbox': state.get('inner_bbox'), 
             'transect': state.get('transect'), 
             'bathy_file': self.file_bathy, 
             'ldb_file': self.file_ldb,
@@ -758,16 +761,13 @@ class Modul4Mesh(QWidget):
             'sediment_file': state.get('sediment_xyz', ""), 
             'tide_bc': state.get('tide_bc', ""),
             
-            # Strategi Kompilasi
             'build_mode': b_mode,
             
-            # Flow Resolution
             'max_res': self.sld_fmax.value(), 
             'min_res': self.sld_fmin.value(), 
             'ocean_boundary_dir': self.cmb_bnd_dir.currentData(), 
             'use_riemann': self.chk_riemann.isChecked(),
             
-            # Wave Params
             'w_max_res': self.sld_wmax.value(),
             'w_min_res': self.sld_wmin.value(),
             'w_fric_type': self.cmb_w_fric.currentText(),
@@ -777,9 +777,8 @@ class Modul4Mesh(QWidget):
             'out_dir': os.path.abspath(os.path.join(os.getcwd(), 'Apex_FM_Model_Final'))
         }
         
-        # Validasi I/O ketat untuk SEMUA skenario
         if not p['bathy_file'] or not p['aoi_bounds'] or not p['inner_bbox']:
-            QMessageBox.critical(self, "Spesifikasi Inkomplit", "Batimetri, Outer BBox (ERA5), dan Inner BBox Mikro wajib ada untuk merakit mesh komputasi.")
+            QMessageBox.critical(self, "Berkas Belum Lengkap", "Batimetri, BBox Makro (ERA5), dan BBox Mikro wajib disetel untuk merakit jaring arsitektur komputasi (Mesh).")
             return
 
         self.btn_mesh.setEnabled(False)
@@ -792,9 +791,9 @@ class Modul4Mesh(QWidget):
         
         def on_mesh_done(status: str, success: bool):
             self.btn_mesh.setEnabled(True)
-            self._update_build_btn_text(self.cmb_build_mode.currentText()) # Mengembalikan teks tombol
+            self._update_build_btn_text(self.cmb_build_mode.currentText()) 
             if success: 
-                QMessageBox.information(self, "Kompilasi Sukses", f"Eksekusi perakitan mesh/konfigurasi ({b_mode}) berhasil diselesaikan. Anda dapat beralih ke Modul 5 (Execution).")
+                QMessageBox.information(self, "Kompilasi Sukses", f"Eksekusi perakitan mesh dan konfigurasi ({b_mode}) berhasil diselesaikan.")
             self.dimr_worker.deleteLater()
             
         self.dimr_worker.finished_signal.connect(on_mesh_done)
