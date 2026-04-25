@@ -49,6 +49,10 @@ class DepthOfClosure2DWorker(QThread):
             self.doc_val_signal.emit(abs(doc_depth))
             self.finished_signal.emit(True)
             
+            # Opsional: Paksa pengumpulan memori sampah yang tertahan oleh figure Matplotlib
+            import gc
+            gc.collect()
+            
         except Exception as e:
             # Memisahkan UI log dengan System log untuk kemudahan debugging
             error_details = f"{str(e)}\n{traceback.format_exc()}"
