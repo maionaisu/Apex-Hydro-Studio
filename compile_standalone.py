@@ -1,7 +1,7 @@
 # ==============================================================================
-# APEX NEXUS TIER-0: ENTERPRISE COMPILER (PYINSTALLER) - FINAL STABLE
+# APEX NEXUS TIER-0: ENTERPRISE COMPILER (PYINSTALLER) - FINAL COMPREHENSIVE
 # TARGET: ApexHydroStudio/main.py
-# CAPABILITY: --onedir Enterprise, Numba LLVM, Dask Lazy Eval, & WebEngine
+# CAPABILITY: --onedir Enterprise, Conda DLL Recovery, Dask Lazy Eval, WebEngine, & Geo-Spatial
 # ==============================================================================
 import os
 import sys
@@ -9,8 +9,8 @@ import shutil
 import PyInstaller.__main__
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
-# [CRITICAL GUARD]: Pohon dependensi saintifik (Xarray + Dask + Numba + Geopandas) 
-# sangat dalam. Meningkatkan limit rekursi mencegah RecursionError saat kompilasi.
+# [CRITICAL GUARD]: scientific trees (Xarray + Dask + Numba + Geopandas) are deep.
+# A limit of 10,000 prevents RecursionError during the dependency analysis phase.
 sys.setrecursionlimit(10000)
 
 print("=====================================================")
@@ -18,30 +18,54 @@ print(" ⚡ APEX HYDRO-STUDIO — ENTERPRISE COMPILER v18.0 ⚡ ")
 print("=====================================================")
 
 REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
-# Deteksi folder script utama
+# Detection logic for the entry point
 APEX_DIR = REPO_ROOT if os.path.exists(os.path.join(REPO_ROOT, 'main.py')) else os.path.join(REPO_ROOT, 'ApexHydroStudio')
 SCRIPT = os.path.join(APEX_DIR, 'main.py')
 
 if not os.path.exists(SCRIPT):
-    print(f"[FATAL] Entry point 'main.py' tidak ditemukan di: {SCRIPT}")
+    print(f"[FATAL] Entry point 'main.py' not found at: {SCRIPT}")
     sys.exit(1)
 
-# ── 1. CLEANUP PRE-BUILD ──────────────────────────────────────────────────────
+# ── 1. CONDA DLL LOCATOR (THE "GOLDEN" FIX) ──────────────────────────────────
+# Scientific DLLs like hdf5.dll and netcdf.dll live in Library/bin in Conda.
+CONDA_PREFIX = os.environ.get('CONDA_PREFIX', '')
+BIN_PATH = ""
+if CONDA_PREFIX:
+    BIN_PATH = os.path.join(CONDA_PREFIX, 'Library', 'bin')
+    if not os.path.exists(BIN_PATH):
+        BIN_PATH = os.path.join(CONDA_PREFIX, 'bin')
+
+print(f"[*] Conda Binary Path Detected: {BIN_PATH}")
+
+# ── 2. CLEANUP ────────────────────────────────────────────────────────────────
 for folder in ['build', 'dist', 'build_temp', '__pycache__']:
     fp = os.path.join(REPO_ROOT, folder)
     if os.path.exists(fp):
-        print(f"[*] Membersihkan folder temp: '{folder}'...")
+        print(f"[*] Cleaning legacy build folder: '{folder}'...")
         shutil.rmtree(fp, ignore_errors=True)
 
-# ── 2. RUNTIME HOOK (QtWebEngine Process Locator) ─────────────────────────────
+# ── 3. TIER-0 RUNTIME HOOK (QtWebEngine & PROJ_LIB GEOPATIAL FIX) ────────────
 hook_path = os.path.join(REPO_ROOT, '_rthook_apex.py')
 with open(hook_path, 'w') as hf:
     hf.write("""import os, sys
 if hasattr(sys, '_MEIPASS'):
-    # Matikan sandbox Chromium agar tidak berkonflik dengan permission OS
+    # Disable Chromium sandbox for better OS compatibility
     os.environ['QTWEBENGINE_DISABLE_SANDBOX'] = '1'
+    # Force the _internal folder into PATH so late-loaded DLLs are found
+    os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
     
-    # Deteksi lokasi QtWebEngineProcess.exe di folder _internal PyInstaller
+    # [ENTERPRISE FIX]: PyProj & Geopandas PROJ_LIB Environment Tracker
+    # Mencegah crash "PROJ: proj_create: no database context specified" saat transformasi EPSG
+    proj_paths = [
+        os.path.join(sys._MEIPASS, 'pyproj', 'proj_dir', 'share', 'proj'),
+        os.path.join(sys._MEIPASS, 'pyproj', 'data')
+    ]
+    for p_lib in proj_paths:
+        if os.path.exists(p_lib):
+            os.environ['PROJ_LIB'] = p_lib
+            break
+            
+    # WebEngine paths
     possible_paths = [
         os.path.join(sys._MEIPASS, 'PyQt6', 'Qt6', 'bin', 'QtWebEngineProcess.exe'),
         os.path.join(sys._MEIPASS, 'PyQt6', 'QtWebEngineProcess.exe'),
@@ -52,9 +76,10 @@ if hasattr(sys, '_MEIPASS'):
             os.environ['QTWEBENGINEPROCESS_PATH'] = p
             break
 """)
+print(f"[*] Runtime hook injected → {hook_path}")
 
-# ── 3. DATA & BINARY COLLECTION ───────────────────────────────────────────────
-print("[*] Mengekstrak metadata, DLL, dan data biner ekosistem...")
+# ── 4. SAFE DEPENDENCY COLLECTION ────────────────────────────────────────────
+print("[*] Collecting metadata, dynamic libs, and submodules...")
 
 def safe_collect_data(pkg):
     try: return collect_data_files(pkg)
@@ -68,7 +93,7 @@ def safe_collect_mods(pkg):
     try: return collect_submodules(pkg)
     except Exception: return []
 
-# Kumpulkan file pendukung Deltares, GIS, dan Sains
+# Collect from heavy scientific ecosystems
 mk_datas         = safe_collect_data('meshkernel')
 mk_binaries      = safe_collect_libs('meshkernel')
 dfm_datas        = safe_collect_data('dfm_tools')
@@ -84,28 +109,36 @@ shapely_binaries = safe_collect_libs('shapely')
 xarray_datas     = safe_collect_data('xarray')
 netcdf_binaries  = safe_collect_libs('netCDF4')
 
-# Kumpulkan hidden submodules untuk library yang sering 'hilang' saat kompilasi
+# Collect submodules that often go missing in standalone builds
 fiona_hidden     = safe_collect_mods('fiona')
 gpd_hidden       = safe_collect_mods('geopandas')
 xarray_hidden    = safe_collect_mods('xarray')
 dask_hidden      = safe_collect_mods('dask')
+pyproj_hidden    = safe_collect_mods('pyproj')
 
-# ── 4. BUILD ARGUMENTS (--ONEDIR ENTERPRISE) ─────────────────────────────────
+# ── 5. BUILD ARGUMENTS ────────────────────────────────────────────────────────
 SEP = os.pathsep
 
 pyinstaller_args = [
     SCRIPT,
-    '--onedir',          # Mode Folder: Loading INSTAN (0 detik)
-    '--windowed',        # No CMD console
+    '--onedir',          # Enterprise Mode: Instant loading from folder
+    '--console',         # [DEBUG MODE]: Set to --console to catch startup errors. (Ubah ke --windowed untuk rilis akhir)
+    '--noconfirm',       # Overwrite automatically
     '--name=ApexHydroStudio',
     f'--runtime-hook={hook_path}',
-    '--noupx',           # JANGAN gunakan UPX (merusak Numba & PyQt6)
+    '--noupx',           # Stability: UPX breaks Numba and PyQt6 DLLs.
 
-    # ── CORE HIDDEN IMPORTS ──────────────────────────────────────────────────
+    # -- ENVIRONMENT PATHS --
+    f'--paths={BIN_PATH}',
+
+    # ── [CRITICAL BUG FIX]: Mencegah konflik enum.py bawaan PyInstaller
+    '--exclude-module=enum34',
+
+    # ── HIDDEN IMPORTS (CORE SCIENCE) ────────────────────────────────────────
     '--hidden-import=pandas',
     '--hidden-import=numpy',
     '--hidden-import=scipy',
-    '--hidden-import=pyproj',
+    '--hidden-import=scipy.special.cython_special',
     '--hidden-import=netCDF4',
     '--hidden-import=cdsapi',
     '--hidden-import=h5py',
@@ -117,11 +150,13 @@ pyinstaller_args = [
     '--hidden-import=distributed',
     '--hidden-import=cloudpickle',
 
-    # ── FIONA / GIS ───────────────────────────────────────────────────────────
+    # ── GIS & SPATIAL ────────────────────────────────────────────────────────
     '--hidden-import=fiona._shim',
     '--hidden-import=fiona.schema',
     '--hidden-import=shapely',
     '--hidden-import=shapely.geometry',
+    '--hidden-import=pyproj',
+    '--hidden-import=geopandas',
 
     # ── DELTARES ECOSYSTEM ────────────────────────────────────────────────────
     '--hidden-import=xugrid',
@@ -139,7 +174,8 @@ pyinstaller_args = [
     '--hidden-import=PyQt6.QtWebEngineWidgets',
     '--hidden-import=PyQt6.QtWebEngineCore',
     '--hidden-import=PyQt6.QtWebChannel',
-
+    '--hidden-import=PyQt6.sip',
+    
     # ── INTERNAL APP MODULES ─────────────────────────────────────────────────
     '--hidden-import=ui.views.modul1_era5',
     '--hidden-import=ui.views.modul2_sediment',
@@ -164,28 +200,31 @@ pyinstaller_args = [
     '--hidden-import=utils.config',
     '--hidden-import=utils.math_accel',
 
-    # [HPC]: Mendukung CUDA jika tersedia
-    '--hidden-import=cupy',
-    '--hidden-import=cupyx',
-
     '--clean',
     '--workpath=./build_temp',
     '--distpath=./dist',
-
-    # ── DATA INJECTION ────────────────────────────────────────────────────────
-    f'--add-data={os.path.join(APEX_DIR, "assets")}{SEP}assets',
 ]
 
-# Tambahkan hidden submodules hasil koleksi otomatis
-for mod in fiona_hidden + gpd_hidden + xarray_hidden + dask_hidden:
+# ── 6. MANUAL DLL & DATA INJECTION ───────────────────────────────────────────
+
+# Forced DLL injection from Conda bin (Solves the "Library Not Found" issue)
+if BIN_PATH:
+    critical_dlls = ['hdf5.dll', 'netcdf.dll', 'msvcp140.dll', 'vcruntime140.dll', 'libcurl.dll']
+    for dll in critical_dlls:
+        target_dll = os.path.join(BIN_PATH, dll)
+        if os.path.exists(target_dll):
+            pyinstaller_args.append(f'--add-binary={target_dll}{SEP}.')
+
+# Add submodules
+for mod in fiona_hidden + gpd_hidden + xarray_hidden + dask_hidden + pyproj_hidden:
     pyinstaller_args.append(f'--hidden-import={mod}')
 
-# Tambahkan Biner (DLL)
+# Add Collected Binaries
 all_binaries = mk_binaries + fiona_binaries + shapely_binaries + netcdf_binaries
-for binary in all_binaries:
-    pyinstaller_args.append(f'--add-binary={binary[0]}{SEP}{binary[1]}')
+for b in all_binaries:
+    pyinstaller_args.append(f'--add-binary={b[0]}{SEP}{b[1]}')
 
-# Tambahkan File Data (Templates, Metadata)
+# Add Collected Datas
 all_datas = (mk_datas + dfm_datas + hydrolib_datas + xugrid_datas +
              pooch_datas + ddlpy_datas + pyproj_datas +
              geopandas_datas + fiona_datas + xarray_datas)
@@ -197,22 +236,30 @@ for data in all_datas:
         seen_datas.add(key)
         pyinstaller_args.append(f'--add-data={data[0]}{SEP}{data[1]}')
 
-# Icon
-logo_ico = os.path.join(APEX_DIR, 'assets', 'Apex Wave Studio.ico')
-if os.path.exists(logo_ico):
-    pyinstaller_args.append(f'--icon={logo_ico}')
+# Add Assets Directory
+assets_dir = os.path.join(APEX_DIR, "assets")
+if os.path.exists(assets_dir):
+    pyinstaller_args.append(f'--add-data={assets_dir}{SEP}assets')
 
-# ── 5. EXECUTE BUILD ─────────────────────────────────────────────────────────
-print("\n[*] Mengeksekusi kompilasi Enterprise... (Estimasi: 5-15 menit)\n")
+# Icon
+ico_path = os.path.join(APEX_DIR, 'assets', 'Apex Wave Studio.ico')
+if os.path.exists(ico_path):
+    pyinstaller_args.append(f'--icon={ico_path}')
+
+# ── 7. EXECUTE BUILD ─────────────────────────────────────────────────────────
+print("\n[*] Starting Enterprise Compilation... This will take 5-15 minutes.\n")
 try:
     PyInstaller.__main__.run(pyinstaller_args)
     print("\n" + "="*55)
-    print(" ✅ KOMPILASI SELESAI!")
-    print(" -> Folder aplikasi : dist/ApexHydroStudio/")
-    print(" -> File Eksekusi   : dist/ApexHydroStudio/ApexHydroStudio.exe")
+    print(" ✅ COMPILATION COMPLETE!")
+    print(" -> App Folder  : dist/ApexHydroStudio/")
+    print(" -> Executable  : dist/ApexHydroStudio/ApexHydroStudio.exe")
     print("="*55)
 except Exception as e:
-    print(f"\n❌ [FATAL] Kompilasi gagal: {e}")
+    print(f"\n❌ [FATAL] Compilation failed: {e}")
 finally:
     if os.path.exists(hook_path):
-        os.remove(hook_path)
+        try:
+            os.remove(hook_path)
+        except:
+            pass
