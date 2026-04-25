@@ -394,7 +394,6 @@ class Modul4Mesh(QWidget):
         self.inp_gamma.setFixedWidth(80)
         wg2.addRow(QLabel("Gamma Breaking:", styleSheet="color: #9CA3AF; font-weight: bold;"), self.inp_gamma)
         
-        # [NEW INJECTION]: Constant Water Level for D-Waves Standalone Calibration
         self.inp_w_level = QLineEdit("0.0")
         self.inp_w_level.setFixedWidth(80)
         self.inp_w_level.setToolTip("Hanya digunakan pada Tahap 2 (D-WAVES Standalone) sebagai elevasi referensi pengganti pasang surut D-FLOW.")
@@ -568,7 +567,6 @@ class Modul4Mesh(QWidget):
                     geom = row.geometry
                     if geom is None: continue
                     
-                    # FIX: Handle MultiPolygon dengan mengekstrak tiap polygon di dalamnya
                     geoms = [geom] if geom.geom_type in ['Polygon', 'LineString'] else geom.geoms
                     
                     for g in geoms:
@@ -623,9 +621,24 @@ class Modul4Mesh(QWidget):
                 self.tbl_trans.setItem(i, col, item)
         self.tbl_trans.blockSignals(False)
 
+    def manual_transect_update(self) -> None:
+        """Dipanggil ketika user mengubah nilai koordinat transek pada tabel manual"""
+        coords = []
+        for i in range(self.tbl_trans.rowCount()):
+            try:
+                lat = float(self.tbl_trans.item(i,0).text())
+                lon = float(self.tbl_trans.item(i,1).text())
+                coords.append([lat, lon]) 
+            except Exception: pass
+            
+        if len(coords) >= 2:
+            app_state.update('transect', coords)
+            js_line = f"addGeoJSON({{\"type\":\"LineString\",\"coordinates\":{json.dumps([[c[1], c[0]] for c in coords])}}}, '#8FC9DC');"
+            self.web_mesh.page().runJavaScript(js_line)
+
     def manual_map_update(self) -> None:
         try:
-            # 1. BBox Check (BUG FIX: Disimpan sebagai inner_bbox, bukan mesh_bbox)
+            # 1. BBox Check 
             try:
                 n = float(self.tbl_bbox.item(0,0).text())
                 s = float(self.tbl_bbox.item(1,0).text())
@@ -720,6 +733,11 @@ class Modul4Mesh(QWidget):
 
         state = app_state.get_all()
         
+        # [ENTERPRISE GUARD]: Waktu simulasi Mutlak diperlukan
+        if not state.get('sim_start_time') or not state.get('sim_end_time'):
+            QMessageBox.critical(self, "Fatal Time Desync", "Rentang waktu simulasi belum dikunci dari Modul 1. Hal ini akan menggagalkan DIMR Engine. Silakan set waktu awal dan akhir di Modul 1 ERA5.")
+            return
+
         # Tentukan Mode Build dari ComboBox
         mode_text = self.cmb_build_mode.currentText()
         if "Tahap 1" in mode_text: b_mode = "dflow_only"
@@ -754,7 +772,7 @@ class Modul4Mesh(QWidget):
             'w_min_res': self.sld_wmin.value(),
             'w_fric_type': self.cmb_w_fric.currentText(),
             'w_gamma': float(self.inp_gamma.text() or 0.73),
-            'w_level': float(self.inp_w_level.text() or 0.0), # INJEKSI WATER LEVEL UNTUK KALIBRASI SWAN
+            'w_level': float(self.inp_w_level.text() or 0.0),
             
             'out_dir': os.path.abspath(os.path.join(os.getcwd(), 'Apex_FM_Model_Final'))
         }
