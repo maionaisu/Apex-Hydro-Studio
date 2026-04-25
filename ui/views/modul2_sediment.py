@@ -2,6 +2,7 @@
 # APEX NEXUS TIER-0: MODUL 2 - SPATIAL SEDIMENT & MANGROVE (UI VIEW)
 # ==============================================================================
 import os
+import gc
 import logging
 import traceback
 import pandas as pd
@@ -40,7 +41,6 @@ STYLE_GROUPBOX = """
     }
 """
 
-# [UPDATE]: Menambahkan QSpinBox ke dalam daftar elemen yang dipercantik
 STYLE_INPUTS = """
     QComboBox, QSpinBox {
         background-color: #0F172A;
@@ -102,11 +102,9 @@ STYLE_BTN_OUTLINE = """
     QPushButton#PurpleBtn:hover { background-color: #4C1D95; border-color: #8B5CF6; color: #A78BFA; }
 """
 
-
 class Modul2Sediment(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        # Menambahkan parameter 'file' untuk menyimpan state jalur file yang sedang aktif
         self.tab_data = {
             'sediment': {'df': None, 'file': None},
             'mangrove': {'df': None, 'file': None},
@@ -185,7 +183,6 @@ class Modul2Sediment(QWidget):
         
         splitter.addWidget(bot_wrap)
         
-        # Proporsi Splitter: Heatmap mendapat 60% layar
         splitter.setSizes([600, 350, 100])
         main_layout.addWidget(splitter)
 
@@ -227,7 +224,6 @@ class Modul2Sediment(QWidget):
         
         label_style = "QLabel { color: #CBD5E1; font-weight: bold; font-size: 13px; }"
         
-        # [NEW INJECTION]: Sheet Selector & Header Row untuk Parsing Excel Akurat
         cmb_sheet = QComboBox()
         cmb_sheet.setEnabled(False)
         cmb_sheet.addItem("Membutuhkan File Excel...")
@@ -250,7 +246,6 @@ class Modul2Sediment(QWidget):
         g2.addRow(l_sheet, cmb_sheet)
         g2.addRow(l_hdr, spn_header)
         
-        # Divider Line
         line = QFrame(); line.setFrameShape(QFrame.Shape.HLine); line.setStyleSheet("background-color: #334155;")
         g2.addRow(line)
         
@@ -273,7 +268,6 @@ class Modul2Sediment(QWidget):
         c2.addWidget(grp2)
         layout.addLayout(c2, stretch=6)
         
-        # Simpan reference ke memori instans agar bisa dipanggil fungsi lain
         setattr(self, f"cmb_sheet_{mode_type}", cmb_sheet)
         setattr(self, f"spn_header_{mode_type}", spn_header)
         setattr(self, f"cmb_x_{mode_type}", cmb_x)
@@ -282,7 +276,6 @@ class Modul2Sediment(QWidget):
         setattr(self, f"chk_ks_{mode_type}", chk_ks)
         setattr(self, f"btn_run_{mode_type}", btn_run)
         
-        # Menyambungkan Sinyal Perubahan Sheet/Header
         cmb_sheet.currentTextChanged.connect(lambda t, m=mode_type: self.on_sheet_or_header_changed(m))
         spn_header.valueChanged.connect(lambda v, m=mode_type: self.on_sheet_or_header_changed(m))
 
@@ -294,23 +287,23 @@ class Modul2Sediment(QWidget):
         cmb_sheet = getattr(self, f"cmb_sheet_{mode_type}")
         spn_header = getattr(self, f"spn_header_{mode_type}")
         
-        # Reset nilai SpinBox Header ke 0 setiap kali muat file baru
         spn_header.blockSignals(True)
         spn_header.setValue(0)
         spn_header.blockSignals(False)
         
         try:
             if p.endswith('.xlsx'):
-                # Baca meta-data Excel (Sheet Names)
-                xl = pd.ExcelFile(p)
+                # [HARDENING]: Memastikan File Handle ditutup dengan context manager
+                with pd.ExcelFile(p) as xl:
+                    sheet_names = xl.sheet_names
+                
                 cmb_sheet.blockSignals(True)
                 cmb_sheet.clear()
-                cmb_sheet.addItems(xl.sheet_names)
+                cmb_sheet.addItems(sheet_names)
                 cmb_sheet.setEnabled(True)
                 cmb_sheet.blockSignals(False)
                 
-                # Load sheet pertama sebagai default
-                self.load_sheet_data(mode_type, xl.sheet_names[0], 0)
+                self.load_sheet_data(mode_type, sheet_names[0], 0)
             else:
                 cmb_sheet.blockSignals(True)
                 cmb_sheet.clear()
@@ -326,22 +319,23 @@ class Modul2Sediment(QWidget):
             QMessageBox.critical(self, "I/O Error", f"Gagal membaca file spreadsheet: {str(e)}")
 
     def on_sheet_or_header_changed(self, mode_type: str) -> None:
-        """Triggered ketika user mengganti sheet aktif atau menggeser nilai baris header."""
         cmb_sheet = getattr(self, f"cmb_sheet_{mode_type}")
         spn_header = getattr(self, f"spn_header_{mode_type}")
         
         sheet = cmb_sheet.currentText()
         header_row = spn_header.value()
-        
         self.load_sheet_data(mode_type, sheet, header_row)
 
     def load_sheet_data(self, mode_type: str, sheet_name: str, header_row: int) -> None:
-        """Membaca isi DataFrame spesifik berdasarkan sheet dan baris judul (header)."""
         p = self.tab_data[mode_type].get('file')
         if not p: return
         
+        # [MEMORY MANAGEMENT]: Clear old DataFrame to prevent OOM
+        if self.tab_data[mode_type]['df'] is not None:
+            del self.tab_data[mode_type]['df']
+            gc.collect()
+        
         try:
-            # Gunakan header_row agar Pandas tidak membaca judul proyek sebagai nama kolom
             if p.endswith('.xlsx') and sheet_name and sheet_name != "CSV File Aktif":
                 df = pd.read_excel(p, sheet_name=sheet_name, header=header_row)
             else:
@@ -354,7 +348,6 @@ class Modul2Sediment(QWidget):
             cmb_y = getattr(self, f"cmb_y_{mode_type}")
             cmb_v = getattr(self, f"cmb_v_{mode_type}")
             
-            # Blokir sinyal sementara agar Dropdown tidak error saat dikosongkan
             cmb_x.blockSignals(True); cmb_y.blockSignals(True); cmb_v.blockSignals(True)
             cmb_x.clear(); cmb_y.clear(); cmb_v.clear()
             
@@ -364,19 +357,21 @@ class Modul2Sediment(QWidget):
             
             cmb_x.blockSignals(False); cmb_y.blockSignals(False); cmb_v.blockSignals(False)
             
-            # Auto-Detect kecerdasan buatan untuk menebak kolom
+            # Auto-Detect AI
             for c in cols:
                 cl = str(c).lower()
                 if 'lon' in cl or 'x' in cl or 'easting' in cl: cmb_x.setCurrentText(c)
                 if 'lat' in cl or 'y' in cl or 'northing' in cl: cmb_y.setCurrentText(c)
-                if 'd50' in cl or 'sedimen' in cl or 'val' in cl or 'friction' in cl or 'dens' in cl or 'z' in cl or 'target' in cl: 
+                if any(k in cl for k in ['d50', 'sedimen', 'val', 'friction', 'dens', 'z', 'target']): 
                     cmb_v.setCurrentText(c)
                 
             sht_log = f"Sheet '{sheet_name}'" if sheet_name else "CSV"
-            self.log_sed.append(f"[SYSTEM] {sht_log} dengan Header Baris ke-{header_row} diload. Data terekstrak: {len(df)} titik.")
+            self.log_sed.append(f"[SYSTEM] {sht_log} (Header: {header_row}) ter-load. Baris Data: {len(df)}")
             
+        except pd.errors.EmptyDataError:
+            self.log_sed.append(f"❌ Error: File kosong atau sheet '{sheet_name}' tidak memiliki data.")
         except Exception as e:
-            logger.warning(f"Gagal memuat subset data saat mengganti parameter sheet/header: {e}")
+            logger.warning(f"Gagal memuat subset data: {e}")
 
     def run_interpolation(self, mode_type: str) -> None:
         if hasattr(self, 'sed_w') and self.sed_w.isRunning():
@@ -384,9 +379,8 @@ class Modul2Sediment(QWidget):
             return
 
         df = self.tab_data[mode_type]['df']
-        
         if df is None:
-            QMessageBox.warning(self, "Validasi Gagal", f"Harap muat dataset (.csv/.xlsx) untuk mode '{mode_type}' terlebih dahulu.")
+            QMessageBox.warning(self, "Validasi Gagal", f"Harap muat dataset (.csv/.xlsx) untuk mode '{mode_type}'.")
             return
             
         cmb_x = getattr(self, f"cmb_x_{mode_type}")
@@ -399,9 +393,8 @@ class Modul2Sediment(QWidget):
         col_y = cmb_y.currentText()
         col_val = cmb_v.currentText()
         
-        # Validasi Unnamed Guard
         if 'unnamed' in col_x.lower() or 'unnamed' in col_y.lower():
-            QMessageBox.warning(self, "Kolom Tidak Valid", "Terdeteksi kolom 'Unnamed'. Silakan naikkan 'Baris Header (0-idx)' hingga nama kolom asli Anda muncul di dropdown.")
+            QMessageBox.warning(self, "Kolom Invalid", "Terdeteksi kolom 'Unnamed'. Naikkan angka 'Baris Header (0-idx)'.")
             return
             
         if not col_x or not col_y or not col_val:
@@ -411,6 +404,9 @@ class Modul2Sediment(QWidget):
         btn_run.setEnabled(False)
         btn_run.setText("⏳ Sedang Mengekstrak Matriks Spasial...")
         
+        # Mengunci EPSG 32749 Sesuai Skripsi CMC Malang Selatan
+        epsg_code = app_state.get('EPSG', '32749')
+        
         self.sed_w = SedimentWorker(
             df=df,
             col_x=col_x,
@@ -418,7 +414,7 @@ class Modul2Sediment(QWidget):
             col_val=col_val,
             convert_ks=chk_ks.isChecked() if chk_ks.isVisible() else False,
             mode_type=mode_type,
-            epsg=app_state.get('EPSG', '32749')
+            epsg=epsg_code
         )
         
         self.sed_w.log_signal.connect(self.log_sed.append)
@@ -436,7 +432,7 @@ class Modul2Sediment(QWidget):
             
             if xyz_path and os.path.exists(xyz_path):
                 app_state.update('sediment_xyz', xyz_path)
-                self.log_sed.append(f"[STATE] File forcing `.xyz` berhasil dikunci ke Memori Global.")
+                self.log_sed.append(f"[STATE] File forcing `{os.path.basename(xyz_path)}` berhasil dikunci ke Memori Global.")
                 
             self.sed_w.deleteLater()
             
