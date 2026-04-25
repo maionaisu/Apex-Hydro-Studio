@@ -1,25 +1,25 @@
 /* ==============================================================================
    APEX NEXUS: FINTECH SLATE THEME (ENTERPRISE UI)
-   Inspirasi: Modern Fintech Dashboard (Slate, Indigo, Teal)
+   Inspirasi: Modern Fintech Dashboard (Slate, Indigo, Teal, Amber)
 ============================================================================== */
 
 /* --- GLOBAL BACKGROUND --- */
 QMainWindow, QWidget#MainWidget {
-    background-color: #272A2F; /* Dark Slate dari referensi */
+    background-color: #272A2F; /* Dark Slate */
     color: #FFFFFF;
     font-family: 'Segoe UI', 'San Francisco', sans-serif;
 }
 
 /* --- SIDEBAR & PANELS --- */
 QFrame#SidebarFrame {
-    background-color: #22252A; /* Sedikit lebih gelap untuk kedalaman */
+    background-color: #22252A; 
     border-right: 1px solid #3A3F4A;
 }
 
 /* --- CARDS (QGroupBox) --- */
 QGroupBox {
-    background-color: #2D3139; /* Card background */
-    border: 1px solid #3A3F4A; /* Subtle border */
+    background-color: #2D3139; 
+    border: 1px solid #3A3F4A; 
     border-radius: 16px;
     margin-top: 20px;
     padding-top: 40px; 
@@ -40,7 +40,7 @@ QGroupBox::title {
 
 /* --- INPUTS (Fields, ComboBox) --- */
 QLineEdit, QComboBox, QSpinBox, QDateTimeEdit {
-    background-color: #1F2227; /* Darker inset */
+    background-color: #1F2227; 
     border: 1px solid #3A3F4A;
     border-radius: 10px;
     padding: 10px 15px;
@@ -95,7 +95,7 @@ QTableWidget::item:selected, QListWidget::item:selected {
 /* --- TERMINAL (QTextEdit) --- */
 QTextEdit {
     background-color: #1E2128;
-    color: #8FC9DC; /* Teal text untuk terminal log */
+    color: #8FC9DC; 
     border: 1px solid #3A3F4A;
     border-radius: 12px;
     font-family: 'Consolas', monospace;
@@ -115,14 +115,28 @@ QProgressBar {
 }
 
 QProgressBar::chunk {
-    background-color: #595FF7; /* Solid Indigo */
+    background-color: #595FF7; 
     border-radius: 5px;
 }
 
+/* --- SPLITTER --- */
+QSplitter::handle {
+    background-color: transparent;
+}
+
 /* --- TAB WIDGET (Main Tabs) --- */
+/* [ENTERPRISE FIX] Pastikan container utama tab widget tidak memiliki background aneh */
+QTabWidget {
+    background-color: transparent;
+}
+
 QTabWidget::pane {
     border: none;
     background: transparent;
+}
+
+QTabBar {
+    background-color: transparent;
 }
 
 QTabBar::tab {
@@ -137,7 +151,7 @@ QTabBar::tab {
 }
 
 QTabBar::tab:selected {
-    background: #595FF7; /* Active Indigo */
+    background: #595FF7; 
     color: #FFFFFF;
     border: 1px solid #595FF7;
 }
@@ -151,6 +165,9 @@ QTabBar::tab:hover:!selected {
 QTabWidget#SegmentedTab::pane { 
     border: none; 
     background: transparent; 
+}
+QTabBar#SegmentedBar {
+    background-color: transparent;
 }
 QTabBar#SegmentedBar::tab {
     background: #1F2227;
@@ -180,7 +197,7 @@ QTabBar#SegmentedBar::tab:selected {
 
 /* --- BUTTONS (Primary & Base) --- */
 QPushButton, QPushButton#PrimaryBtn, QPushButton#ExecuteBtn {
-    background-color: #595FF7; /* Indigo Primary */
+    background-color: #595FF7; 
     color: #FFFFFF;
     border: none;
     border-radius: 12px;
@@ -190,7 +207,7 @@ QPushButton, QPushButton#PrimaryBtn, QPushButton#ExecuteBtn {
 }
 
 QPushButton:hover, QPushButton#PrimaryBtn:hover, QPushButton#ExecuteBtn:hover {
-    background-color: #7176F8; /* Lighter Indigo on hover */
+    background-color: #7176F8; 
 }
 
 QPushButton#OutlineBtn {
@@ -211,7 +228,7 @@ QPushButton#OutlineBtn:hover {
 /* --- ADDITIONAL CUSTOM BUTTONS --- */
 QPushButton#DangerBtn {
     background-color: transparent;
-    border: 1px solid #FC3F4D; /* Coral Red */
+    border: 1px solid #FC3F4D; 
     color: #FC3F4D;
     border-radius: 12px;
     padding: 12px 18px;
@@ -223,7 +240,7 @@ QPushButton#DangerBtn:hover {
 
 QPushButton#GreenBtn {
     background-color: transparent;
-    border: 1px solid #8FC9DC; /* Teal as Green alternative */
+    border: 1px solid #8FC9DC; 
     color: #8FC9DC;
     border-radius: 12px;
     padding: 12px 18px;
@@ -246,7 +263,7 @@ QPushButton#PurpleBtn:hover {
 }
 
 QPushButton#TipsBtn {
-    background-color: rgba(247, 193, 89, 0.1); /* Yellow Accent */
+    background-color: rgba(247, 193, 89, 0.1); 
     color: #F7C159;
     border: 1px solid rgba(247, 193, 89, 0.3);
     border-radius: 12px;
@@ -277,7 +294,7 @@ QPushButton#NavBtn:hover {
 }
 
 QPushButton#NavBtn[active="true"] {
-    background-color: rgba(89, 95, 247, 0.15); /* Soft Indigo Background */
+    background-color: rgba(89, 95, 247, 0.15); 
     color: #595FF7;
     border-left: 4px solid #595FF7; 
     border-top-left-radius: 6px; 
@@ -319,8 +336,12 @@ QScrollBar::handle:vertical {
 QScrollBar::handle:vertical:hover {
     background: #595FF7;
 }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::up-arrow:vertical, QScrollBar::down-arrow:vertical,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
     height: 0px;
+    background: none;
+    border: none;
 }
 
 QScrollBar:horizontal {
@@ -336,6 +357,48 @@ QScrollBar::handle:horizontal {
 QScrollBar::handle:horizontal:hover {
     background: #595FF7;
 }
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
+QScrollBar::left-arrow:horizontal, QScrollBar::right-arrow:horizontal,
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     width: 0px;
+    background: none;
+    border: none;
+}
+
+/* --- ENTERPRISE FIX: DIALOGS, TOOLTIPS & MESSAGE BOXES --- */
+QMessageBox, QDialog {
+    background-color: #272A2F;
+    color: #FFFFFF;
+    border: 1px solid #3A3F4A;
+    border-radius: 12px;
+}
+
+QMessageBox QLabel {
+    color: #E2E8F0;
+    font-size: 13px;
+    font-weight: 600;
+    background-color: transparent; /* Mencegah background putih pada teks label */
+}
+
+QMessageBox QPushButton {
+    background-color: #595FF7;
+    color: #FFFFFF;
+    border-radius: 8px;
+    padding: 8px 24px;
+    font-weight: bold;
+    min-width: 80px;
+}
+
+QMessageBox QPushButton:hover {
+    background-color: #7176F8;
+}
+
+QToolTip {
+    background-color: #0F172A;
+    color: #F8FAFC;
+    border: 1px solid #F59E0B;
+    border-radius: 6px;
+    padding: 6px;
+    font-size: 12px;
+    font-family: 'Segoe UI', sans-serif;
 }
