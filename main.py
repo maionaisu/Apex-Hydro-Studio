@@ -56,7 +56,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QStackedWidget, QGridLayout, 
                              QMessageBox, QComboBox, QFileDialog, QSplashScreen, QGroupBox)
 from PyQt6.QtCore import Qt, QProcess
-from PyQt6.QtGui import QIcon, QPixmap, QCursor, QColor
+from PyQt6.QtGui import QIcon, QPixmap, QCursor, QColor, QFont
 
 from core.state_manager import app_state
 
@@ -76,15 +76,15 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
     if QApplication.instance():
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Icon.Critical)
-        msg.setWindowTitle("Apex Hydro-Studio : Fatal System Error")
+        msg.setWindowTitle("Apex Hydro-Studio : Kesalahan Sistem Fatal")
         msg.setText("Terjadi galat fatal pada kernel aplikasi.")
-        msg.setInformativeText(f"Log error telah disimpan secara permanen di:\n{log_file}")
+        msg.setInformativeText(f"Log galat telah disimpan secara permanen di:\n{log_file}")
         tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
         msg.setDetailedText("".join(tb_lines))
         msg.setStyleSheet("QLabel { color: #000; background-color: transparent; }") 
         msg.exec()
     else:
-        print("FATAL ERROR (UI Dead):", exc_value)
+        print("FATAL ERROR (UI Mati):", exc_value)
 
 sys.excepthook = global_exception_handler
 
@@ -105,7 +105,7 @@ class ApexHydroStudioApp(QMainWindow):
                 with open(theme_path, "r", encoding='utf-8') as f:
                     self.setStyleSheet(f.read())
             except Exception as e:
-                logger.error(f"Failed to load QSS Theme: {e}")
+                logger.error(f"Gagal memuat Tema QSS: {e}")
                 
         self.main_w = QWidget()
         self.main_w.setObjectName("MainWidget")
@@ -123,43 +123,51 @@ class ApexHydroStudioApp(QMainWindow):
     def build_heavy_modules(self, splash: QSplashScreen):
         logger.info("Membangun arsitektur modul D-Flow FM & SWAN...")
         
-        splash.showMessage("Memuat Modul 1: Sintesis Data ERA5...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
-        self.modul1 = Modul1ERA5()
-        QApplication.processEvents()
-
-        splash.showMessage("Memuat Modul 2: Pemetaan Morfologi Sedimen...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
-        self.modul2 = Modul2Sediment()
-        QApplication.processEvents()
-
-        splash.showMessage("Memuat Modul 3: Harmonik Pasang Surut...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
-        self.modul3 = Modul3Tide()
-        QApplication.processEvents()
-
-        splash.showMessage("Memuat Modul 4: Pembangkit Mesh Digital Twin...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
-        self.modul4 = Modul4Mesh()
-        QApplication.processEvents()
-
-        splash.showMessage("Memuat Modul 5: DIMR HPC Execution...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
-        self.modul5 = Modul5Execution()
-        QApplication.processEvents()
-
-        splash.showMessage("Memuat Modul 6: Post-Processing & Validasi...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
-        self.modul6 = Modul6PostProc()
-        QApplication.processEvents()
+        # [ENTERPRISE FIX]: Kunci interaksi pengguna selama loading agar tidak terjadi Race Condition
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         
-        self.modules = [self.modul1, self.modul2, self.modul3, self.modul4, self.modul5, self.modul6]
-        for m in self.modules:
-            self.stacked_widget.addWidget(m)
+        try:
+            splash.showMessage("Memuat Modul 1: Sintesis Data ERA5...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
+            self.modul1 = Modul1ERA5()
+            QApplication.processEvents()
 
-        app_state.state_updated.connect(self.update_global_state_ui)
-        app_state.bulk_state_updated.connect(self.update_global_state_ui)
+            splash.showMessage("Memuat Modul 2: Pemetaan Morfologi Sedimen...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
+            self.modul2 = Modul2Sediment()
+            QApplication.processEvents()
 
-        self.tour_overlay = InteractiveTourOverlay(self)
-        self.setup_interactive_guides()
-        
-        self.switch_page(0)
-        self.modules_loaded = True
-        logger.info("Apex Hydro-Studio siap untuk simulasi riset.")
+            splash.showMessage("Memuat Modul 3: Harmonik Pasang Surut...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
+            self.modul3 = Modul3Tide()
+            QApplication.processEvents()
+
+            splash.showMessage("Memuat Modul 4: Pembangkit Mesh Digital Twin...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
+            self.modul4 = Modul4Mesh()
+            QApplication.processEvents()
+
+            splash.showMessage("Memuat Modul 5: Eksekusi HPC DIMR...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
+            self.modul5 = Modul5Execution()
+            QApplication.processEvents()
+
+            splash.showMessage("Memuat Modul 6: Pasca-Pemrosesan & Validasi...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
+            self.modul6 = Modul6PostProc()
+            QApplication.processEvents()
+            
+            self.modules = [self.modul1, self.modul2, self.modul3, self.modul4, self.modul5, self.modul6]
+            for m in self.modules:
+                self.stacked_widget.addWidget(m)
+
+            app_state.state_updated.connect(self.update_global_state_ui)
+            app_state.bulk_state_updated.connect(self.update_global_state_ui)
+
+            self.tour_overlay = InteractiveTourOverlay(self)
+            self.setup_interactive_guides()
+            
+            self.switch_page(0)
+            self.modules_loaded = True
+            logger.info("Apex Hydro-Studio siap untuk simulasi riset.")
+            
+        finally:
+            # Kembalikan kursor ke normal apa pun yang terjadi
+            QApplication.restoreOverrideCursor()
 
     def init_sidebar(self) -> None:
         self.sidebar = QFrame()
@@ -184,24 +192,24 @@ class ApexHydroStudioApp(QMainWindow):
         side_lay.addLayout(h_brand)
         side_lay.addSpacing(20)
         
-        lbl_hpc = QLabel("COMPUTE BACKEND:")
+        lbl_hpc = QLabel("BACKEND KOMPUTASI:")
         lbl_hpc.setStyleSheet("color: #6B7280; font-size: 10px; font-weight: 800;")
         side_lay.addWidget(lbl_hpc)
         
         self.cmb_backend = QComboBox()
-        self.cmb_backend.addItems(["🖥️ CPU (Default)", "🚀 CUDA (GPU)", "🔥 HYBRID"])
+        self.cmb_backend.addItems(["🖥️ CPU (Bawaan)", "🚀 CUDA (GPU)", "🔥 HIBRIDA"])
         self.cmb_backend.currentTextChanged.connect(lambda t: app_state.update('compute_backend', t))
         side_lay.addWidget(self.cmb_backend)
         side_lay.addSpacing(15)
 
         self.nav_btns = []
         nav_items = [
-            ("⛆  ERA5 Synthesizer", 0), 
-            ("▤  Sediments Field", 1), 
-            ("🌊  Tidal Harmonix", 2), 
-            ("⚙  DIMR Orchestrator", 3), 
-            ("🚀  HPC Execution", 4), 
-            ("📊  Validation Lab", 5)
+            ("⛆  Sintesis ERA5", 0), 
+            ("▤  Medan Sedimen", 1), 
+            ("🌊  Harmonik Pasut", 2), 
+            ("⚙  Orkestrator DIMR", 3), 
+            ("🚀  Eksekusi HPC", 4), 
+            ("📊  Lab Validasi", 5)
         ]
         for text, idx in nav_items:
             btn = QPushButton(text)
@@ -214,11 +222,11 @@ class ApexHydroStudioApp(QMainWindow):
         side_lay.addSpacing(15)
         
         h_sess = QHBoxLayout()
-        btn_save = QPushButton("💾 Save")
+        btn_save = QPushButton("💾 Simpan")
         btn_save.setObjectName("OutlineBtn")
         btn_save.clicked.connect(self.save_session)
         
-        btn_load = QPushButton("📂 Load")
+        btn_load = QPushButton("📂 Muat")
         btn_load.setObjectName("OutlineBtn")
         btn_load.clicked.connect(self.load_session)
         
@@ -228,7 +236,7 @@ class ApexHydroStudioApp(QMainWindow):
 
         side_lay.addStretch()
         
-        self.stat_grp = QGroupBox("Project Memory Tracker")
+        self.stat_grp = QGroupBox("Pelacak Memori Proyek")
         slay = QVBoxLayout(self.stat_grp)
         slay.setContentsMargins(15, 30, 15, 15)
         
@@ -237,8 +245,8 @@ class ApexHydroStudioApp(QMainWindow):
         
         self.lbl_st_hs = QLabel("Hs: 0.0m")
         self.lbl_st_tp = QLabel("Tp: 8.0s")
-        self.lbl_st_sed = QLabel("Sed: None")
-        self.lbl_st_tide = QLabel("Tide: No BC")
+        self.lbl_st_sed = QLabel("Sedimen: Kosong")
+        self.lbl_st_tide = QLabel("Pasut: Kosong")
         
         trackers = [("🌊", self.lbl_st_hs), ("⏱", self.lbl_st_tp), ("🪨", self.lbl_st_sed), ("⚓", self.lbl_st_tide)]
         for i, (icon, lbl) in enumerate(trackers):
@@ -275,38 +283,38 @@ class ApexHydroStudioApp(QMainWindow):
             self.lbl_st_hs.setText("Hs: 0.0m"); self.lbl_st_hs.setStyleSheet(STYLE_EMPTY)
             
         if sed:
-            self.lbl_st_sed.setText("Roughness: OK"); self.lbl_st_sed.setStyleSheet(STYLE_LOCKED)
+            self.lbl_st_sed.setText("Sedimen: OK"); self.lbl_st_sed.setStyleSheet(STYLE_LOCKED)
         else:
-            self.lbl_st_sed.setText("Roughness: None"); self.lbl_st_sed.setStyleSheet(STYLE_EMPTY)
+            self.lbl_st_sed.setText("Sedimen: Kosong"); self.lbl_st_sed.setStyleSheet(STYLE_EMPTY)
             
         if tide:
-            self.lbl_st_tide.setText("Tide: Linked"); self.lbl_st_tide.setStyleSheet(STYLE_LOCKED)
+            self.lbl_st_tide.setText("Pasut: Terikat"); self.lbl_st_tide.setStyleSheet(STYLE_LOCKED)
         else:
-            self.lbl_st_tide.setText("Tide: No BC"); self.lbl_st_tide.setStyleSheet(STYLE_EMPTY)
+            self.lbl_st_tide.setText("Pasut: Kosong"); self.lbl_st_tide.setStyleSheet(STYLE_EMPTY)
 
     def save_session(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, "Export Apex Research Session", "", "Apex Session (*.apex)")
+        path, _ = QFileDialog.getSaveFileName(self, "Ekspor Sesi Riset Apex", "", "Sesi Apex (*.apex)")
         if path:
             if app_state.export_session(path):
-                QMessageBox.information(self, "Success", "Sesi proyek berhasil diekspor ke disk.")
+                QMessageBox.information(self, "Sukses", "Sesi proyek berhasil diekspor secara permanen.")
 
     def load_session(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Import Apex Research Session", "", "Apex Session (*.apex)")
+        path, _ = QFileDialog.getOpenFileName(self, "Impor Sesi Riset Apex", "", "Sesi Apex (*.apex)")
         if path:
             if app_state.import_session(path):
-                QMessageBox.information(self, "Success", "Sesi proyek berhasil dipulihkan.")
+                QMessageBox.information(self, "Sukses", "Sesi proyek berhasil dipulihkan ke dalam memori.")
 
     def setup_interactive_guides(self) -> None:
         self.modul_guides = {
-            0: [{'widget': getattr(self.modul1, 'web_map_era5', None), 'title': 'Langkah 1', 'desc': 'Tentukan area makro ERA5.'}],
-            4: [{'widget': getattr(self.modul5, 'terminal', None), 'title': 'Monitoring', 'desc': 'Pantau log C++ Deltares di sini.'}]
+            0: [{'widget': getattr(self.modul1, 'web_map_era5', None), 'title': 'Langkah 1', 'desc': 'Tentukan area makro ERA5 untuk batas unduhan.'}],
+            4: [{'widget': getattr(self.modul5, 'terminal', None), 'title': 'Pemantauan HPC', 'desc': 'Pantau jalannya kalkulasi C++ Deltares secara langsung di sini.'}]
         }
 
     def closeEvent(self, event) -> None:
         if hasattr(self, 'modul5') and hasattr(self.modul5, 'dimr_manager'):
             if self.modul5.dimr_manager.process.state() != QProcess.ProcessState.NotRunning:
                 msg = QMessageBox.warning(self, "Simulasi Aktif", 
-                    "Mesin Deltares sedang berjalan di latar belakang. Hentikan simulasi di Modul 5 sebelum keluar.",
+                    "Mesin komputasi Deltares masih berjalan di latar belakang.\nHarap hentikan simulasi (Abort) di Modul 5 sebelum menutup aplikasi.",
                     QMessageBox.StandardButton.Ok)
                 event.ignore()
                 return
@@ -319,6 +327,11 @@ if __name__ == '__main__':
     try:
         app = QApplication(sys.argv)
         app.setStyle("Fusion") 
+        
+        # Standarisasi Fon agar konsisten di semua Sistem Operasi
+        default_font = QFont("Segoe UI", 9)
+        default_font.setStyleHint(QFont.StyleHint.SansSerif)
+        app.setFont(default_font)
         
         splash_img = enterprise_path_resolver(os.path.join('assets', 'Apex Wave Studio.png'))
         if os.path.exists(splash_img):
@@ -338,5 +351,14 @@ if __name__ == '__main__':
         
         sys.exit(app.exec())
     except Exception as fatal_e:
-        logger.critical(f"Aplikasi gagal melakukan booting: {fatal_e}", exc_info=True)
+        # [FAIL-SAFE]: Menulis ke file secara langsung jika logging system belum sempat diinisialisasi
+        err_msg = f"Aplikasi gagal melakukan booting: {str(fatal_e)}\n{traceback.format_exc()}"
+        logger.critical(err_msg)
+        
+        try:
+            with open("fatal_boot_error.txt", "w") as f:
+                f.write(err_msg)
+        except Exception:
+            pass
+            
         sys.exit(1)
