@@ -14,6 +14,7 @@ class DIMREngineManager(QObject):
     1. Anti-Tearing Buffered Line Reader (canReadLine).
     2. Graceful Termination Logic to prevent NetCDF file corruption.
     3. Process Environment Isolation.
+    4. [HARDENED] PyQt6 strict program & argument setters.
     """
     stdout_signal = pyqtSignal(str)
     stderr_signal = pyqtSignal(str)
@@ -50,16 +51,20 @@ class DIMREngineManager(QObject):
 
         logger.info(f"[DIMR] Memulai eksekusi di: {working_dir} menggunakan {bat_path}")
         
-        # 3. Environment Isolation (Opsional tapi esensial untuk Enterprise)
+        # 3. Environment Isolation (Esensial untuk Enterprise)
         # Menjamin C++ engine tidak terganggu oleh environment variables GUI Python
         env = QProcessEnvironment.systemEnvironment()
         self.process.setProcessEnvironment(env)
         
         self.process.setWorkingDirectory(working_dir)
-        args = [config_file]
+        
+        # [ENTERPRISE FIX]: Menggunakan standard PyQt6 yang ketat
+        # Mencegah injeksi string argumen yang korup pada OS Windows
+        self.process.setProgram(bat_path)
+        self.process.setArguments([config_file])
         
         # Eksekusi aman dari Command Injection
-        self.process.start(bat_path, args)
+        self.process.start()
 
     def abort_execution(self) -> None:
         """
