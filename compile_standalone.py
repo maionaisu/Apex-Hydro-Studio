@@ -9,8 +9,6 @@ import shutil
 import PyInstaller.__main__
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
-# [CRITICAL GUARD]: scientific trees (Xarray + Dask + Numba + Geopandas) are deep.
-# A limit of 10,000 prevents RecursionError during the dependency analysis phase.
 sys.setrecursionlimit(10000)
 
 print("=====================================================")
@@ -18,7 +16,6 @@ print(" ⚡ APEX HYDRO-STUDIO — ENTERPRISE COMPILER v18.0 ⚡ ")
 print("=====================================================")
 
 REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
-# Detection logic for the entry point
 APEX_DIR = REPO_ROOT if os.path.exists(os.path.join(REPO_ROOT, 'main.py')) else os.path.join(REPO_ROOT, 'ApexHydroStudio')
 SCRIPT = os.path.join(APEX_DIR, 'main.py')
 
@@ -26,8 +23,6 @@ if not os.path.exists(SCRIPT):
     print(f"[FATAL] Entry point 'main.py' not found at: {SCRIPT}")
     sys.exit(1)
 
-# ── 1. CONDA DLL LOCATOR (THE "GOLDEN" FIX) ──────────────────────────────────
-# Scientific DLLs like hdf5.dll and netcdf.dll live in Library/bin in Conda.
 CONDA_PREFIX = os.environ.get('CONDA_PREFIX', '')
 BIN_PATH = ""
 if CONDA_PREFIX:
@@ -37,25 +32,21 @@ if CONDA_PREFIX:
 
 print(f"[*] Conda Binary Path Detected: {BIN_PATH}")
 
-# ── 2. CLEANUP ────────────────────────────────────────────────────────────────
 for folder in ['build', 'dist', 'build_temp', '__pycache__']:
     fp = os.path.join(REPO_ROOT, folder)
     if os.path.exists(fp):
         print(f"[*] Cleaning legacy build folder: '{folder}'...")
         shutil.rmtree(fp, ignore_errors=True)
 
-# ── 3. TIER-0 RUNTIME HOOK (QtWebEngine & PROJ_LIB GEOPATIAL FIX) ────────────
+# ── TIER-0 RUNTIME HOOK ──────────────────────────────────────────────────────
 hook_path = os.path.join(REPO_ROOT, '_rthook_apex.py')
 with open(hook_path, 'w') as hf:
     hf.write("""import os, sys
 if hasattr(sys, '_MEIPASS'):
-    # Disable Chromium sandbox for better OS compatibility
     os.environ['QTWEBENGINE_DISABLE_SANDBOX'] = '1'
-    # Force the _internal folder into PATH so late-loaded DLLs are found
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
     
-    # [ENTERPRISE FIX]: PyProj & Geopandas PROJ_LIB Environment Tracker
-    # Mencegah crash "PROJ: proj_create: no database context specified" saat transformasi EPSG
+    # 1. EPSG PROJ DATABASE FIX
     proj_paths = [
         os.path.join(sys._MEIPASS, 'pyproj', 'proj_dir', 'share', 'proj'),
         os.path.join(sys._MEIPASS, 'pyproj', 'data')
@@ -65,7 +56,23 @@ if hasattr(sys, '_MEIPASS'):
             os.environ['PROJ_LIB'] = p_lib
             break
             
-    # WebEngine paths
+    # 2. GDAL DATA FIX (FOR GEOPANDAS / SHP FILES)
+    gdal_paths = [
+        os.path.join(sys._MEIPASS, 'fiona', 'gdal_data'),
+        os.path.join(sys._MEIPASS, 'osgeo', 'data', 'gdal')
+    ]
+    for g_lib in gdal_paths:
+        if os.path.exists(g_lib):
+            os.environ['GDAL_DATA'] = g_lib
+            break
+
+    # 3. SSL CERTIFICATES FIX (FOR COPERNICUS ERA5 DOWNLOADS)
+    cert_path = os.path.join(sys._MEIPASS, 'certifi', 'cacert.pem')
+    if os.path.exists(cert_path):
+        os.environ['SSL_CERT_FILE'] = cert_path
+        os.environ['REQUESTS_CA_BUNDLE'] = cert_path
+            
+    # 4. QT WEBENGINE BROWSER FIX
     possible_paths = [
         os.path.join(sys._MEIPASS, 'PyQt6', 'Qt6', 'bin', 'QtWebEngineProcess.exe'),
         os.path.join(sys._MEIPASS, 'PyQt6', 'QtWebEngineProcess.exe'),
@@ -78,7 +85,6 @@ if hasattr(sys, '_MEIPASS'):
 """)
 print(f"[*] Runtime hook injected → {hook_path}")
 
-# ── 4. SAFE DEPENDENCY COLLECTION ────────────────────────────────────────────
 print("[*] Collecting metadata, dynamic libs, and submodules...")
 
 def safe_collect_data(pkg):
@@ -93,7 +99,6 @@ def safe_collect_mods(pkg):
     try: return collect_submodules(pkg)
     except Exception: return []
 
-# Collect from heavy scientific ecosystems
 mk_datas         = safe_collect_data('meshkernel')
 mk_binaries      = safe_collect_libs('meshkernel')
 dfm_datas        = safe_collect_data('dfm_tools')
@@ -108,37 +113,39 @@ fiona_binaries   = safe_collect_libs('fiona')
 shapely_binaries = safe_collect_libs('shapely')
 xarray_datas     = safe_collect_data('xarray')
 netcdf_binaries  = safe_collect_libs('netCDF4')
+qtweb_datas      = safe_collect_data('PyQt6.QtWebEngineCore')
 
-# Collect submodules that often go missing in standalone builds
+# [ENTERPRISE FIX]: Komponen Krusial Tambahan
+certifi_datas    = safe_collect_data('certifi')
+matplotlib_datas = safe_collect_data('matplotlib')
+
 fiona_hidden     = safe_collect_mods('fiona')
 gpd_hidden       = safe_collect_mods('geopandas')
 xarray_hidden    = safe_collect_mods('xarray')
 dask_hidden      = safe_collect_mods('dask')
 pyproj_hidden    = safe_collect_mods('pyproj')
+matplotlib_hid   = safe_collect_mods('matplotlib')
 
-# ── 5. BUILD ARGUMENTS ────────────────────────────────────────────────────────
 SEP = os.pathsep
 
 pyinstaller_args = [
     SCRIPT,
-    '--onedir',          # Enterprise Mode: Instant loading from folder
-    '--console',         # [DEBUG MODE]: Set to --console to catch startup errors. (Ubah ke --windowed untuk rilis akhir)
-    '--noconfirm',       # Overwrite automatically
+    '--onedir',          
+    '--console',         
+    '--noconfirm',       
     '--name=ApexHydroStudio',
     f'--runtime-hook={hook_path}',
-    '--noupx',           # Stability: UPX breaks Numba and PyQt6 DLLs.
+    '--noupx',           
 
-    # -- ENVIRONMENT PATHS --
     f'--paths={BIN_PATH}',
-
-    # ── [CRITICAL BUG FIX]: Mencegah konflik enum.py bawaan PyInstaller
     '--exclude-module=enum34',
 
-    # ── HIDDEN IMPORTS (CORE SCIENCE) ────────────────────────────────────────
+    # ── HIDDEN IMPORTS ───────────────────────────────────────────────────────
     '--hidden-import=pandas',
     '--hidden-import=numpy',
     '--hidden-import=scipy',
     '--hidden-import=scipy.special.cython_special',
+    '--hidden-import=scipy.spatial.transform',
     '--hidden-import=netCDF4',
     '--hidden-import=cdsapi',
     '--hidden-import=h5py',
@@ -149,8 +156,17 @@ pyinstaller_args = [
     '--hidden-import=dask',
     '--hidden-import=distributed',
     '--hidden-import=cloudpickle',
+    
+    # Network & SSL untuk ERA5
+    '--hidden-import=certifi',
+    '--hidden-import=requests',
+    '--hidden-import=urllib3',
+    
+    # Rendering untuk Modul 6 PostProc
+    '--hidden-import=matplotlib',
+    '--hidden-import=matplotlib.backends.backend_agg',
 
-    # ── GIS & SPATIAL ────────────────────────────────────────────────────────
+    # GIS
     '--hidden-import=fiona._shim',
     '--hidden-import=fiona.schema',
     '--hidden-import=shapely',
@@ -158,7 +174,7 @@ pyinstaller_args = [
     '--hidden-import=pyproj',
     '--hidden-import=geopandas',
 
-    # ── DELTARES ECOSYSTEM ────────────────────────────────────────────────────
+    # Deltares
     '--hidden-import=xugrid',
     '--hidden-import=pooch',
     '--hidden-import=ddlpy',
@@ -167,7 +183,7 @@ pyinstaller_args = [
     '--hidden-import=hydrolib.core.dflowfm.mdu.models',
     '--hidden-import=hydrolib.core.dflowfm.ext.models',
 
-    # ── PYQT6 WEBENGINE ──────────────────────────────────────────────────────
+    # PyQt
     '--hidden-import=PyQt6.QtCore',
     '--hidden-import=PyQt6.QtGui',
     '--hidden-import=PyQt6.QtWidgets',
@@ -176,7 +192,7 @@ pyinstaller_args = [
     '--hidden-import=PyQt6.QtWebChannel',
     '--hidden-import=PyQt6.sip',
     
-    # ── INTERNAL APP MODULES ─────────────────────────────────────────────────
+    # Modul Internal
     '--hidden-import=ui.views.modul1_era5',
     '--hidden-import=ui.views.modul2_sediment',
     '--hidden-import=ui.views.modul3_tide',
@@ -205,9 +221,6 @@ pyinstaller_args = [
     '--distpath=./dist',
 ]
 
-# ── 6. MANUAL DLL & DATA INJECTION ───────────────────────────────────────────
-
-# Forced DLL injection from Conda bin (Solves the "Library Not Found" issue)
 if BIN_PATH:
     critical_dlls = ['hdf5.dll', 'netcdf.dll', 'msvcp140.dll', 'vcruntime140.dll', 'libcurl.dll']
     for dll in critical_dlls:
@@ -215,19 +228,17 @@ if BIN_PATH:
         if os.path.exists(target_dll):
             pyinstaller_args.append(f'--add-binary={target_dll}{SEP}.')
 
-# Add submodules
-for mod in fiona_hidden + gpd_hidden + xarray_hidden + dask_hidden + pyproj_hidden:
+for mod in fiona_hidden + gpd_hidden + xarray_hidden + dask_hidden + pyproj_hidden + matplotlib_hid:
     pyinstaller_args.append(f'--hidden-import={mod}')
 
-# Add Collected Binaries
 all_binaries = mk_binaries + fiona_binaries + shapely_binaries + netcdf_binaries
 for b in all_binaries:
     pyinstaller_args.append(f'--add-binary={b[0]}{SEP}{b[1]}')
 
-# Add Collected Datas
 all_datas = (mk_datas + dfm_datas + hydrolib_datas + xugrid_datas +
              pooch_datas + ddlpy_datas + pyproj_datas +
-             geopandas_datas + fiona_datas + xarray_datas)
+             geopandas_datas + fiona_datas + xarray_datas + qtweb_datas + 
+             certifi_datas + matplotlib_datas)
 
 seen_datas = set()
 for data in all_datas:
@@ -236,17 +247,14 @@ for data in all_datas:
         seen_datas.add(key)
         pyinstaller_args.append(f'--add-data={data[0]}{SEP}{data[1]}')
 
-# Add Assets Directory
 assets_dir = os.path.join(APEX_DIR, "assets")
 if os.path.exists(assets_dir):
     pyinstaller_args.append(f'--add-data={assets_dir}{SEP}assets')
 
-# Icon
 ico_path = os.path.join(APEX_DIR, 'assets', 'Apex Wave Studio.ico')
 if os.path.exists(ico_path):
     pyinstaller_args.append(f'--icon={ico_path}')
 
-# ── 7. EXECUTE BUILD ─────────────────────────────────────────────────────────
 print("\n[*] Starting Enterprise Compilation... This will take 5-15 minutes.\n")
 try:
     PyInstaller.__main__.run(pyinstaller_args)
