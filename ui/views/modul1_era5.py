@@ -82,8 +82,11 @@ class Modul1ERA5(QWidget):
         head = QVBoxLayout()
         t = QLabel("Metocean Synthesizer (ERA5)")
         t.setStyleSheet("font-size: 26px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px;")
-        d = QLabel("Unduh Data Copernicus CDS, Ekstrak Kondisi Awal (Initial Condition), dan Generasi Macro-AOI Otomatis.")
+        
+        # [ENTERPRISE FIX]: Menggunakan HTML Div untuk text-align justify dan line-height di PyQt
+        d = QLabel("<div style='text-align: justify; line-height: 1.5;'>Unduh Data Copernicus CDS (Sistem Baru), Ekstrak Kondisi Awal (Initial Condition), dan Generasi Macro-AOI Otomatis dengan penyesuaian buffer spasial untuk mencegah kegagalan Crop MARS.</div>")
         d.setStyleSheet("color: #9CA3AF; font-size: 14px;")
+        d.setWordWrap(True)
         head.addWidget(t)
         head.addWidget(d)
         main_layout.addLayout(head)
@@ -126,10 +129,11 @@ class Modul1ERA5(QWidget):
         t1 = QWidget()
         l1 = QVBoxLayout(t1)
         l1.setContentsMargins(20, 24, 20, 20)
-        lbl_msg = QLabel("💡 Gunakan fitur Draw Rectangle pada toolbar peta untuk menentukan area unduhan ERA5 (Bukan Area Detail).")
-        lbl_msg.setStyleSheet("color: #9CA3AF; font-size: 13px; line-height: 1.6;")
+        
+        # [ENTERPRISE FIX]: Teks penjelasan yang rapi
+        lbl_msg = QLabel("<div style='text-align: justify; line-height: 1.5;'>💡 Gunakan fitur Draw Rectangle pada toolbar peta untuk menentukan area makro. Sistem akan otomatis menambahkan <b>buffer spasial 0.5°</b> (≈ 55km) saat mengunduh untuk mencegah <i>Empty Area Mask Error</i> pada server satelit.</div>")
+        lbl_msg.setStyleSheet("color: #9CA3AF; font-size: 13px;")
         lbl_msg.setWordWrap(True)
-        lbl_msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
         l1.addWidget(lbl_msg)
         
         self.lbl_req_bbox = QLabel("Batas Request (BBox): Belum Digambar")
@@ -199,7 +203,8 @@ class Modul1ERA5(QWidget):
         g0.setVerticalSpacing(16)
         
         self.inp_api = QLineEdit()
-        self.inp_api.setPlaceholderText("UID:API_KEY (e.g., 123456:a1b2c3d4-e5f6)")
+        # [ENTERPRISE FIX]: Mengganti format API Key menjadi format sistem baru CDS (UUID)
+        self.inp_api.setPlaceholderText("Paste API Key Baru CDS (Contoh UUID: 24af6dec-...)")
         self.inp_api.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
         cached_api = self.settings.value('cds_api', '')
         if cached_api: self.inp_api.setText(cached_api)
@@ -245,7 +250,7 @@ class Modul1ERA5(QWidget):
         self.dt_end.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.dt_end.setCalendarPopup(True)
         
-        # [HARDENING]: Memicu Time Sync saat tanggal diubah
+        # Memicu Time Sync saat tanggal diubah
         self.dt_start.dateTimeChanged.connect(self._sync_time_to_state)
         self.dt_end.dateTimeChanged.connect(self._sync_time_to_state)
         
@@ -358,7 +363,7 @@ class Modul1ERA5(QWidget):
     # --------------------------------------------------------------------------
     
     def _sync_time_to_state(self):
-        """[HARDENING] Sync Time Boundary for DIMR/Tidal execution"""
+        """Sync Time Boundary for DIMR/Tidal execution"""
         app_state.update_multiple({
             'sim_start_time': self.dt_start.dateTime().toString(Qt.DateFormat.ISODate),
             'sim_end_time': self.dt_end.dateTime().toString(Qt.DateFormat.ISODate)
@@ -405,8 +410,8 @@ class Modul1ERA5(QWidget):
         self.log_era5.append("[SYSTEM] Bounding Box Request diperbarui dari Peta.")
         self._syncing = False
 
-    def manual_update_bbox_vertical(self) -> None:
-        if self._syncing: return
+    def manual_update_bbox_vertical(self, item=None) -> None:
+        if getattr(self, '_syncing', False): return
         try:
             n = float(self.tbl_bbox.item(0,0).text())
             s = float(self.tbl_bbox.item(1,0).text())
@@ -424,7 +429,7 @@ class Modul1ERA5(QWidget):
             self.web_map_era5.page().runJavaScript("clearMap(); " + js_box)
             self.log_era5.append("[SYSTEM] Request AOI Manual diterapkan.")
         except Exception as e:
-            self.log_era5.append(f"[WARNING] Input manual gagal divalidasi: {str(e)}")
+            pass
 
     def run_era5_downloader(self) -> None:
         if hasattr(self, 'era_w') and self.era_w.isRunning():
@@ -452,10 +457,21 @@ class Modul1ERA5(QWidget):
         params = [item.data(Qt.ItemDataRole.UserRole) for item in selected_items]
         out_file = os.path.abspath(os.path.join(os.getcwd(), "Apex_Data_Exports", "ERA5_WAVE.nc"))
         
+        # [ENTERPRISE FIX]: Menyelesaikan Bug MARS Empty Area Crop
+        # Copernicus memerlukan minimal 1 piksel grid (0.25 derajat) untuk dapat diekstrak.
+        # Menambahkan buffer +0.5 derajat ke segala arah secara transparan di sistem latar.
+        self.log_era5.append("■ Menginjeksikan buffer spasial 0.5° untuk mencegah MARS Server Empty Area Error...")
+        buffered_bbox = {
+            'N': bbox['N'] + 0.5,
+            'S': bbox['S'] - 0.5,
+            'E': bbox['E'] + 0.5,
+            'W': bbox['W'] - 0.5
+        }
+        
         self.btn_dl_era5.setEnabled(False)
         self.btn_dl_era5.setText("⏳ Sedang mengunduh via API satelit...")
         
-        self.era_w = ERA5DownloaderWorker(api_key, bbox, params, dt_s, dt_e, out_file)
+        self.era_w = ERA5DownloaderWorker(api_key, buffered_bbox, params, dt_s, dt_e, out_file)
         self.era_w.log_signal.connect(self.log_era5.append)
         
         def on_finished(success: bool, path: str):
@@ -524,11 +540,9 @@ class Modul1ERA5(QWidget):
                 self.log_era5.append("▶ Memanggil Out-of-Core Dask Extractor...")
                 hs, tp, dir_, doc = ERA5Extractor.extract_wave_params(self.era5_path)
                 
-                # [HARDENING] Sync Time boundaries too!
                 self._sync_time_to_state()
                 app_state.update_multiple({'He': hs, 'Hs': hs, 'Tp': tp, 'Dir': dir_, 'DoC': doc})
                 
-                # Paksa pembaruan TextBox lokal jika sinyal lambat
                 self.inp_man_hs.setText(f"{hs:.2f}")
                 self.inp_man_tp.setText(f"{tp:.2f}")
                 self.inp_man_dir.setText(f"{dir_:.2f}")
@@ -547,7 +561,6 @@ class Modul1ERA5(QWidget):
             dir_ = float(self.inp_man_dir.text() or 180.0)
             doc = 1.57 * hs
             
-            # [HARDENING] Ensure time is synced
             self._sync_time_to_state()
             app_state.update_multiple({'He': hs, 'Hs': hs, 'Tp': tp, 'Dir': dir_, 'DoC': doc})
             self.log_era5.append(f"✅ Parameter di-inject manual: Hs={hs}m, Tp={tp}s, Dir={dir_}°")
