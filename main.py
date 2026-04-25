@@ -6,55 +6,31 @@ import os
 import logging
 import traceback
 
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QPushButton, QLabel, QFrame, 
-                             QStackedWidget, QGridLayout, 
-                             QMessageBox, QComboBox, QFileDialog, QSplashScreen, QGroupBox)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QPixmap, QCursor, QColor
+# ── 1. ENTERPRISE PATH RESOLUTION & ENVIRONMENT GUARD ─────────────────────────
+def get_app_root() -> str:
+    """
+    [TIER-0 SAFEGUARD] O(1) Root Path Resolver.
+    Mencegah Fatal Data-Loss Bug pada PyInstaller. Jika berjalan sebagai .exe,
+    semua data eksport/log akan disimpan di sebelah file .exe, BUKAN di folder Temp (_MEIPASS).
+    """
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
 
-# ── ENTERPRISE PATH RESOLUTION ────────────────────────────────────────────────
 def enterprise_path_resolver(relative_path: str) -> str:
-    """
-    [TIER-0 SAFEGUARD] O(1) Absolute Path Resolver.
-    Menjamin aset selalu ditemukan baik saat dijalankan via Python IDE, 
-    maupun setelah di-compile menggunakan PyInstaller (.exe).
-    """
+    """Menjamin aset UI (QSS/Ico/HTML) selalu ditemukan dari paket internal kompilasi."""
     try:
         base_path = sys._MEIPASS # PyInstaller temp folder
     except AttributeError:
         base_path = os.path.abspath(os.path.dirname(__file__))
     return os.path.join(base_path, relative_path)
 
-try:
-    from utils.config import resource_path, get_project_dirs
-except ImportError:
-    resource_path = enterprise_path_resolver
-    def get_project_dirs(): pass
-
-# [HARDENING]: Inisialisasi Direktori Utama sebelum modul dimuat
-try:
-    get_project_dirs()
-except Exception as e:
-    print(f"Warning: Failed to initialize project directories: {e}")
-
-from core.state_manager import app_state
-
-# Import View Modules
-from ui.views.modul1_era5 import Modul1ERA5
-from ui.views.modul2_sediment import Modul2Sediment
-from ui.views.modul3_tide import Modul3Tide
-from ui.views.modul4_mesh import Modul4Mesh
-from ui.views.modul5_execution import Modul5Execution
-from ui.views.modul6_postproc import Modul6PostProc
-from ui.components.core_widgets import InteractiveTourOverlay
-
-# ── 1. ENTERPRISE LOGGING & EXCEPTION HANDLING ────────────────────────────────
-APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+APP_ROOT = get_app_root()
 EXPORT_DIR = os.path.join(APP_ROOT, 'Apex_Data_Exports')
 os.makedirs(EXPORT_DIR, exist_ok=True)
 log_file = os.path.join(EXPORT_DIR, 'system_crash.log')
 
+# Inisiasi Logging paling awal agar kegagalan Impor terekam di Disk
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
@@ -65,17 +41,44 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ApexMaster")
 
+# [HARDENING]: Inisialisasi Direktori Utama
+try:
+    from utils.config import get_project_dirs
+    get_project_dirs()
+except ImportError:
+    logger.warning("Fungsi get_project_dirs tidak ditemukan, mengabaikan inisialisasi...")
+except Exception as e:
+    logger.error(f"Gagal menginisialisasi direktori proyek: {e}")
+
+# Import Modul UI Inti
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                             QHBoxLayout, QPushButton, QLabel, QFrame, 
+                             QStackedWidget, QGridLayout, 
+                             QMessageBox, QComboBox, QFileDialog, QSplashScreen, QGroupBox)
+from PyQt6.QtCore import Qt, QProcess
+from PyQt6.QtGui import QIcon, QPixmap, QCursor, QColor
+
+from core.state_manager import app_state
+
+from ui.views.modul1_era5 import Modul1ERA5
+from ui.views.modul2_sediment import Modul2Sediment
+from ui.views.modul3_tide import Modul3Tide
+from ui.views.modul4_mesh import Modul4Mesh
+from ui.views.modul5_execution import Modul5Execution
+from ui.views.modul6_postproc import Modul6PostProc
+from ui.components.core_widgets import InteractiveTourOverlay
+
+# ── 2. GLOBAL EXCEPTION HANDLER ───────────────────────────────────────────────
 def global_exception_handler(exc_type, exc_value, exc_traceback):
     """[TIER-0 SAFEGUARD] Menangkap error fatal agar aplikasi tidak 'Silent Crash'."""
     logger.critical("UNCAUGHT FATAL EXCEPTION", exc_info=(exc_type, exc_value, exc_traceback))
     
-    # Pastikan QApplication ada sebelum memanggil QMessageBox
     if QApplication.instance():
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Icon.Critical)
         msg.setWindowTitle("Apex Hydro-Studio : Fatal System Error")
         msg.setText("Terjadi galat fatal pada kernel aplikasi.")
-        msg.setInformativeText(f"Log error telah disimpan di:\n{log_file}")
+        msg.setInformativeText(f"Log error telah disimpan secara permanen di:\n{log_file}")
         tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
         msg.setDetailedText("".join(tb_lines))
         msg.setStyleSheet("QLabel { color: #000; background-color: transparent; }") 
@@ -85,19 +88,17 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
 
 sys.excepthook = global_exception_handler
 
-# ── 2. CORE APPLICATION ARCHITECTURE ──────────────────────────────────────────
+# ── 3. CORE APPLICATION ARCHITECTURE ──────────────────────────────────────────
 class ApexHydroStudioApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Apex Hydro-Studio: Enterprise Analytics (v18.0)")
         self.setMinimumSize(1450, 950)
         
-        # Load Icon
         icon_path = enterprise_path_resolver(os.path.join('assets', 'Apex Wave Studio.ico'))
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         
-        # ── LOAD THEME ────────────────────────────────────────────────────────
         theme_path = enterprise_path_resolver(os.path.join("assets", "theme.qss"))
         if os.path.exists(theme_path):
             try:
@@ -105,10 +106,7 @@ class ApexHydroStudioApp(QMainWindow):
                     self.setStyleSheet(f.read())
             except Exception as e:
                 logger.error(f"Failed to load QSS Theme: {e}")
-        else:
-            logger.warning(f"Theme file missing at: {theme_path}")
                 
-        # ── CORE LAYOUT ───────────────────────────────────────────────────────
         self.main_w = QWidget()
         self.main_w.setObjectName("MainWidget")
         self.setCentralWidget(self.main_w)
@@ -117,17 +115,12 @@ class ApexHydroStudioApp(QMainWindow):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
 
-        # ── INITIALIZE COMPONENTS ────────────────────────────────────────────
         self.init_sidebar()
-        
         self.stacked_widget = QStackedWidget()
         self.layout.addWidget(self.stacked_widget, stretch=1)
-
-        # Modul akan diload secara bertahap oleh Splash Screen (Delayed Init)
         self.modules_loaded = False
 
     def build_heavy_modules(self, splash: QSplashScreen):
-        """[PERFORMANCE OPTIMIZATION] Memuat modul berat dengan indikator Splash Screen."""
         logger.info("Membangun arsitektur modul D-Flow FM & SWAN...")
         
         splash.showMessage("Memuat Modul 1: Sintesis Data ERA5...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, QColor("white"))
@@ -158,7 +151,6 @@ class ApexHydroStudioApp(QMainWindow):
         for m in self.modules:
             self.stacked_widget.addWidget(m)
 
-        # Sinkronisasi Antar Modul & State Manager
         app_state.state_updated.connect(self.update_global_state_ui)
         app_state.bulk_state_updated.connect(self.update_global_state_ui)
 
@@ -178,7 +170,6 @@ class ApexHydroStudioApp(QMainWindow):
         side_lay.setContentsMargins(22, 25, 22, 25)
         side_lay.setSpacing(10)
 
-        # Logo & Brand
         h_brand = QHBoxLayout()
         png_path = enterprise_path_resolver(os.path.join('assets', 'Apex Wave Studio.png'))
         if os.path.exists(png_path):
@@ -193,7 +184,6 @@ class ApexHydroStudioApp(QMainWindow):
         side_lay.addLayout(h_brand)
         side_lay.addSpacing(20)
         
-        # HPC Selector
         lbl_hpc = QLabel("COMPUTE BACKEND:")
         lbl_hpc.setStyleSheet("color: #6B7280; font-size: 10px; font-weight: 800;")
         side_lay.addWidget(lbl_hpc)
@@ -204,7 +194,6 @@ class ApexHydroStudioApp(QMainWindow):
         side_lay.addWidget(self.cmb_backend)
         side_lay.addSpacing(15)
 
-        # Navigation
         self.nav_btns = []
         nav_items = [
             ("⛆  ERA5 Synthesizer", 0), 
@@ -224,7 +213,6 @@ class ApexHydroStudioApp(QMainWindow):
 
         side_lay.addSpacing(15)
         
-        # Session Control
         h_sess = QHBoxLayout()
         btn_save = QPushButton("💾 Save")
         btn_save.setObjectName("OutlineBtn")
@@ -240,7 +228,6 @@ class ApexHydroStudioApp(QMainWindow):
 
         side_lay.addStretch()
         
-        # ── LIVE STATE TRACKER (GLOBAL MEMORY) ──────────────────────────────
         self.stat_grp = QGroupBox("Project Memory Tracker")
         slay = QVBoxLayout(self.stat_grp)
         slay.setContentsMargins(15, 30, 15, 15)
@@ -265,7 +252,6 @@ class ApexHydroStudioApp(QMainWindow):
         self.layout.addWidget(self.sidebar)
 
     def switch_page(self, index: int) -> None:
-        """Navigasi antar modul dengan visual feedback pada sidebar."""
         if not self.modules_loaded: return
         self.stacked_widget.setCurrentIndex(index)
         for i, btn in enumerate(self.nav_btns):
@@ -274,37 +260,29 @@ class ApexHydroStudioApp(QMainWindow):
             btn.style().polish(btn)
 
     def update_global_state_ui(self, key: str = "") -> None:
-        """Sinkronisasi Mutlak: Menjamin Sidebar selalu mencerminkan Global RAM."""
         state = app_state.get_all()
         hs, tp = state.get('Hs', 0), state.get('Tp', 8)
         sed = state.get('sediment_xyz', "")
         tide = state.get('tide_bc', "")
         
-        STYLE_LOCKED = "color: #42E695; font-size: 11px; font-weight: 800;" # Teal Green
-        STYLE_EMPTY = "color: #475569; font-size: 11px; font-weight: 800;" # Muted Slate
+        STYLE_LOCKED = "color: #42E695; font-size: 11px; font-weight: 800;"
+        STYLE_EMPTY = "color: #475569; font-size: 11px; font-weight: 800;"
         
         if hs > 0:
-            self.lbl_st_hs.setText(f"Hs: {hs:.2f}m")
-            self.lbl_st_hs.setStyleSheet(STYLE_LOCKED)
-            self.lbl_st_tp.setText(f"Tp: {tp:.1f}s")
-            self.lbl_st_tp.setStyleSheet(STYLE_LOCKED)
+            self.lbl_st_hs.setText(f"Hs: {hs:.2f}m"); self.lbl_st_hs.setStyleSheet(STYLE_LOCKED)
+            self.lbl_st_tp.setText(f"Tp: {tp:.1f}s"); self.lbl_st_tp.setStyleSheet(STYLE_LOCKED)
         else:
-            self.lbl_st_hs.setText("Hs: 0.0m")
-            self.lbl_st_hs.setStyleSheet(STYLE_EMPTY)
+            self.lbl_st_hs.setText("Hs: 0.0m"); self.lbl_st_hs.setStyleSheet(STYLE_EMPTY)
             
         if sed:
-            self.lbl_st_sed.setText("Roughness: OK")
-            self.lbl_st_sed.setStyleSheet(STYLE_LOCKED)
+            self.lbl_st_sed.setText("Roughness: OK"); self.lbl_st_sed.setStyleSheet(STYLE_LOCKED)
         else:
-            self.lbl_st_sed.setText("Roughness: None")
-            self.lbl_st_sed.setStyleSheet(STYLE_EMPTY)
+            self.lbl_st_sed.setText("Roughness: None"); self.lbl_st_sed.setStyleSheet(STYLE_EMPTY)
             
         if tide:
-            self.lbl_st_tide.setText("Tide: Linked")
-            self.lbl_st_tide.setStyleSheet(STYLE_LOCKED)
+            self.lbl_st_tide.setText("Tide: Linked"); self.lbl_st_tide.setStyleSheet(STYLE_LOCKED)
         else:
-            self.lbl_st_tide.setText("Tide: No BC")
-            self.lbl_st_tide.setStyleSheet(STYLE_EMPTY)
+            self.lbl_st_tide.setText("Tide: No BC"); self.lbl_st_tide.setStyleSheet(STYLE_EMPTY)
 
     def save_session(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, "Export Apex Research Session", "", "Apex Session (*.apex)")
@@ -319,16 +297,14 @@ class ApexHydroStudioApp(QMainWindow):
                 QMessageBox.information(self, "Success", "Sesi proyek berhasil dipulihkan.")
 
     def setup_interactive_guides(self) -> None:
-        """Konfigurasi tutorial interaktif per modul."""
         self.modul_guides = {
             0: [{'widget': getattr(self.modul1, 'web_map_era5', None), 'title': 'Langkah 1', 'desc': 'Tentukan area makro ERA5.'}],
             4: [{'widget': getattr(self.modul5, 'terminal', None), 'title': 'Monitoring', 'desc': 'Pantau log C++ Deltares di sini.'}]
         }
 
     def closeEvent(self, event) -> None:
-        """[TIER-0 SECURITY] Mencegah penutupan aplikasi saat simulasi C++ masih menyala di memori."""
         if hasattr(self, 'modul5') and hasattr(self.modul5, 'dimr_manager'):
-            if self.modul5.dimr_manager.process.state() != 0:
+            if self.modul5.dimr_manager.process.state() != QProcess.ProcessState.NotRunning:
                 msg = QMessageBox.warning(self, "Simulasi Aktif", 
                     "Mesin Deltares sedang berjalan di latar belakang. Hentikan simulasi di Modul 5 sebelum keluar.",
                     QMessageBox.StandardButton.Ok)
@@ -338,25 +314,29 @@ class ApexHydroStudioApp(QMainWindow):
         logger.info("Apex Hydro-Studio ditutup secara aman.")
         event.accept()
 
-# ── 3. ENTERPRISE BOOTSTRAPPER ────────────────────────────────────────────────
+# ── 4. ENTERPRISE BOOTSTRAPPER ────────────────────────────────────────────────
 if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion") 
-    
-    splash_img = enterprise_path_resolver(os.path.join('assets', 'Apex Wave Studio.png'))
-    if os.path.exists(splash_img):
-        pixmap = QPixmap(splash_img).scaled(400, 400, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        splash = QSplashScreen(pixmap, Qt.WindowType.WindowStaysOnTopHint)
-    else:
-        splash = QSplashScreen(QPixmap(400, 400), Qt.WindowType.WindowStaysOnTopHint) 
+    try:
+        app = QApplication(sys.argv)
+        app.setStyle("Fusion") 
         
-    splash.show()
-    app.processEvents()
-    
-    # Inisialisasi UI Utama
-    window = ApexHydroStudioApp()
-    window.build_heavy_modules(splash)
-    window.show()
-    splash.finish(window)
-    
-    sys.exit(app.exec())
+        splash_img = enterprise_path_resolver(os.path.join('assets', 'Apex Wave Studio.png'))
+        if os.path.exists(splash_img):
+            pixmap = QPixmap(splash_img).scaled(400, 400, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            splash = QSplashScreen(pixmap, Qt.WindowType.WindowStaysOnTopHint)
+        else:
+            splash = QSplashScreen(QPixmap(400, 400), Qt.WindowType.WindowStaysOnTopHint) 
+            
+        splash.show()
+        app.processEvents()
+        
+        # Inisialisasi UI Utama
+        window = ApexHydroStudioApp()
+        window.build_heavy_modules(splash)
+        window.show()
+        splash.finish(window)
+        
+        sys.exit(app.exec())
+    except Exception as fatal_e:
+        logger.critical(f"Aplikasi gagal melakukan booting: {fatal_e}", exc_info=True)
+        sys.exit(1)
