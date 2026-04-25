@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class InteractiveTourOverlay(QWidget):
     """
     [TIER-0] Overlay to display interactive tours/tips guiding users through the UI.
-    Hardened with boundary clamping to ensure tooltips never render off-screen.
+    Hardened with boundary clamping and C++ object deletion protection.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -98,34 +98,47 @@ class InteractiveTourOverlay(QWidget):
             
             widget = step.get('widget')
             
-            # Jika widget target ada dan masih valid (belum dihapus oleh GC)
-            if widget and not widget.isHidden():
-                # Translasi koordinat dari widget target ke koordinat global layar
-                global_pos_tl = widget.mapToGlobal(QPoint(0,0))
-                local_pos_tl = self.mapFromGlobal(global_pos_tl)
-                
-                global_pos_br = widget.mapToGlobal(QPoint(widget.width(), widget.height()))
-                local_pos_br = self.mapFromGlobal(global_pos_br)
-                
-                # Membesarkan lubang sorot (padding -8, +8)
-                self.target_rect = QRect(local_pos_tl, local_pos_br).adjusted(-8, -8, 8, 8)
-                
-                box_w = self.info_box.width()
-                box_h = self.info_box.height()
-                screen_w = self.width()
-                screen_h = self.height()
-                
-                # Failsafe Boundary Clamping (Mencegah Tooltip keluar dari layar)
-                x = local_pos_br.x() + 20
-                if x + box_w > screen_w: 
-                    x = local_pos_tl.x() - box_w - 20
+            is_valid_widget = False
+            if widget:
+                try:
+                    # [ENTERPRISE FIX]: Mencegah PyQt RuntimeError jika C++ Object sudah dibuang
+                    # Ini lazim terjadi jika User memuat modul ulang di QStackedWidget
+                    is_valid_widget = not widget.isHidden() and widget.isVisible()
+                except RuntimeError:
+                    is_valid_widget = False
+                    logger.warning("[TOUR] Target widget telah dihapus dari C++ Memory. Mengalihkan ke mode Fullscreen.")
+
+            if is_valid_widget:
+                try:
+                    # Translasi koordinat dari widget target ke koordinat global layar
+                    global_pos_tl = widget.mapToGlobal(QPoint(0,0))
+                    local_pos_tl = self.mapFromGlobal(global_pos_tl)
                     
-                y = local_pos_tl.y()
-                if y + box_h > screen_h: 
-                    y = screen_h - box_h - 20
+                    global_pos_br = widget.mapToGlobal(QPoint(widget.width(), widget.height()))
+                    local_pos_br = self.mapFromGlobal(global_pos_br)
                     
-                # Pengaman ekstra: Kotak tidak boleh memiliki koordinat negatif
-                self.info_box.move(max(10, x), max(10, y))
+                    # Membesarkan lubang sorot (padding -8, +8)
+                    self.target_rect = QRect(local_pos_tl, local_pos_br).adjusted(-8, -8, 8, 8)
+                    
+                    box_w = self.info_box.width()
+                    box_h = self.info_box.height()
+                    screen_w = self.width()
+                    screen_h = self.height()
+                    
+                    # Failsafe Boundary Clamping (Mencegah Tooltip keluar dari layar)
+                    x = local_pos_br.x() + 20
+                    if x + box_w > screen_w: 
+                        x = local_pos_tl.x() - box_w - 20
+                        
+                    y = local_pos_tl.y()
+                    if y + box_h > screen_h: 
+                        y = screen_h - box_h - 20
+                        
+                    # Pengaman ekstra: Kotak tidak boleh memiliki koordinat negatif
+                    self.info_box.move(max(10, x), max(10, y))
+                except Exception as ex:
+                    logger.error(f"[TOUR] Kesalahan kalkulasi geometri: {ex}")
+                    self.target_rect = QRect(0,0,0,0) # Fallback to fullscreen
             else:
                 # Mode Layar Penuh (Tidak ada widget spesifik yang disorot)
                 self.target_rect = QRect(0,0,0,0)
