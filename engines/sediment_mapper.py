@@ -18,13 +18,13 @@ logger = logging.getLogger(__name__)
 
 class SpatialSedimentEngine:
     """
-    Tier-0 Engine for 2D spatial interpolation (Delaunay) of sediment,
+    Tier-0 Engine for 2D spatial interpolation (Kriging & Delaunay) of sediment,
     mangrove density, and submerged vegetation fields.
     Upgraded with OOM (Out Of Memory) protection, Smart Auto-Correction, 
     and UTM Coordinate Detectors.
     """
     @staticmethod
-    def process_and_interpolate(df: pd.DataFrame, col_x: str, col_y: str, col_val: str, epsg: str, mode_type: str, apply_ks: bool = False, log_cb=None) -> tuple:
+    def process_and_interpolate(df: pd.DataFrame, col_x: str, col_y: str, col_val: str, epsg: str, mode_type: str, apply_ks: bool = False, interp_method: str = "Delaunay", log_cb=None) -> tuple:
         
         def _log(msg):
             """Fungsi helper agar pesan sinkron masuk ke backend logger dan UI (jika callback tersedia)"""
@@ -48,9 +48,9 @@ class SpatialSedimentEngine:
             
             df_clean = df_clean.dropna(subset=[col_x, col_y, col_val]).reset_index(drop=True)
             
-            # Delaunay griddata memerlukan setidaknya 3 titik tidak segaris
+            # Delaunay/Kriging memerlukan setidaknya 3 titik tidak segaris
             if len(df_clean) < 3:
-                raise ValueError(f"Jumlah titik data valid ({len(df_clean)}) tidak mencukupi untuk interpolasi 2D Delaunay (Minimal 3 titik).")
+                raise ValueError(f"Jumlah titik data valid ({len(df_clean)}) tidak mencukupi untuk interpolasi 2D (Minimal 3 titik).")
                 
             vals = df_clean[col_val].values
             
@@ -79,7 +79,6 @@ class SpatialSedimentEngine:
             else:
                 _log(f"  ├ [TRANSFORM] Mentransformasi WGS84 (Lat/Lon) ke EPSG:{epsg} (UTM)...")
                 try:
-                    # always_xy=True memastikan input format (Lon, Lat) konsisten
                     tr = Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
                     ux, uy = tr.transform(df_clean[col_x].values, df_clean[col_y].values)
                 except Exception as e:
@@ -97,23 +96,69 @@ class SpatialSedimentEngine:
             if step > 50.0:
                 _log(f"  ├ [OOM GUARD] Area terlalu luas. Resolusi grid diturunkan ke {int(step)}m untuk mencegah Crash RAM.")
             
-            # Penggunaan meshgrid yang jauh lebih aman daripada np.mgrid
             x_coords = np.arange(x_min, x_max, step)
             y_coords = np.arange(y_min, y_max, step)
             gx, gy = np.meshgrid(x_coords, y_coords)
             
-            # 5. Delaunay Interpolation
-            _log("  ├ Menjalankan algoritma interpolasi Delaunay (Linear)...")
-            gz = griddata(np.column_stack((ux, uy)), vals, (gx, gy), method='linear')
-            
-            # Nearest neighbor fallback for NaNs on the perimeter (Ekstrapolasi)
-            if np.isnan(gz).any(): 
-                _log("  ├ Menambal area kosong (Perimeter) dengan Nearest Neighbor Fallback...")
-                nan_mask = np.isnan(gz)
-                gz[nan_mask] = griddata(np.column_stack((ux, uy)), vals, (gx[nan_mask], gy[nan_mask]), method='nearest')
+            # 5. ALGORITMA INTERPOLASI SPASIAL (KRIGING vs DELAUNAY)
+            if "Kriging" in interp_method:
+                # [ENTERPRISE OOM GUARD KHUSUS KRIGING]:
+                # Kriging memecahkan persamaan matriks N x N. Jika titik terlalu banyak, 
+                # ia akan memonopoli 100% memori RAM PC dan freeze selamanya.
+                max_kriging_points = 2500
+                if len(ux) > max_kriging_points:
+                    _log(f"  ├ [OOM GUARD KRIGING] Memori diamankan. Melakukan Random Sampling {max_kriging_points} titik paling representatif dari total {len(ux)} titik.")
+                    idx_sample = np.random.choice(len(ux), max_kriging_points, replace=False)
+                    ux_k, uy_k, vals_k = ux[idx_sample], uy[idx_sample], vals[idx_sample]
+                else:
+                    ux_k, uy_k, vals_k = ux, uy, vals
+
+                try:
+                    from pykrige.ok import OrdinaryKriging
+                    
+                    v_model = 'spherical' # Default (Ideal untuk sebaran Sedimen di Alam)
+                    if 'Exponential' in interp_method: v_model = 'exponential'
+                    elif 'Gaussian' in interp_method: v_model = 'gaussian'
+                    
+                    _log(f"  ├ Mengeksekusi Ordinary Kriging (Variogram: {v_model.capitalize()})...")
+                    _log("  ├ (Proses ini sangat intensif CPU, harap bersabar)")
+                    
+                    OK = OrdinaryKriging(
+                        ux_k, uy_k, vals_k,
+                        variogram_model=v_model,
+                        verbose=False,
+                        enable_plotting=False
+                    )
+                    
+                    # pykrige.execute('grid') mengharapkan input 1D koordinat sumbu X dan Y.
+                    # Ia mengembalikan z_grid berdimensi 2D yang selaras persis dengan np.meshgrid(x_coords, y_coords).
+                    z_grid, ss = OK.execute('grid', x_coords, y_coords)
+                    
+                    # Mengekstrak array data di balik MaskedArray PyKrige
+                    gz = z_grid.data if hasattr(z_grid, 'data') else z_grid
+                    
+                    # Menambal NaN (Jika Kriging gagal mengekstrapolasi ujung luar peta)
+                    if np.isnan(gz).any():
+                        _log("  ├ Menambal area terluar (Perimeter) Kriging dengan Interpolasi Terdekat...")
+                        nan_mask = np.isnan(gz)
+                        gz[nan_mask] = griddata(np.column_stack((ux_k, uy_k)), vals_k, (gx[nan_mask], gy[nan_mask]), method='nearest')
+                        
+                except ImportError:
+                    _log("  ├ [WARNING] Pustaka 'pykrige' tidak terdeteksi (pip install pykrige).")
+                    _log("  ├ Sistem secara otomatis mengalihkan metode ke Fast Delaunay (Linear)...")
+                    gz = griddata(np.column_stack((ux, uy)), vals, (gx, gy), method='linear')
+                    if np.isnan(gz).any():
+                        nan_mask = np.isnan(gz)
+                        gz[nan_mask] = griddata(np.column_stack((ux, uy)), vals, (gx[nan_mask], gy[nan_mask]), method='nearest')
+            else:
+                _log("  ├ Mengeksekusi Fast Delaunay Triangulation (Linear)...")
+                gz = griddata(np.column_stack((ux, uy)), vals, (gx, gy), method='linear')
+                if np.isnan(gz).any(): 
+                    _log("  ├ Menambal area kosong dengan Interpolasi Terdekat...")
+                    nan_mask = np.isnan(gz)
+                    gz[nan_mask] = griddata(np.column_stack((ux, uy)), vals, (gx[nan_mask], gy[nan_mask]), method='nearest')
                 
             # 6. File I/O Safety & Export Logic
-            # Menggunakan jalur absolut yang aman dari root cwd
             out_dir = os.path.abspath(os.path.join(os.getcwd(), 'Apex_Data_Exports'))
             os.makedirs(out_dir, exist_ok=True)
             
@@ -131,12 +176,12 @@ class SpatialSedimentEngine:
             df_export = pd.DataFrame({'X': gx.flatten(), 'Y': gy.flatten(), 'Z': gz.flatten()})
             df_export.dropna().to_csv(out_xyz, sep=' ', header=False, index=False, float_format='%.3f')
             
-            # Bebaskan memori pandas sebelum rendering
+            # Bebaskan memori pandas sebelum rendering plot memakan VRAM
             del df_export
             gc.collect()
             
             # 7. Safe Matplotlib Rendering (Strict Memory Leak Prevention)
-            _log("  ├ Merender Heatmap Visualisasi...")
+            _log("  ├ Merender Spasial Heatmap (Sistem Grid Pcolormesh)...")
             p_path = os.path.join(out_dir, f"{mode_type}_heatmap.png")
             
             try:
@@ -157,7 +202,7 @@ class SpatialSedimentEngine:
                     label_text = 'Densitas (n/m2)'
                     title_text = 'Distribusi Submerged Vegetation'
                     
-                # [ENTERPRISE FIX]: Menggunakan pcolormesh alih-alih scatter untuk grid beraturan
+                # [ENTERPRISE FIX]: Menggunakan pcolormesh alih-alih scatter untuk grid beraturan.
                 # Hal ini menghemat penggunaan VRAM Matplotlib dari 8GB+ menjadi kurang dari 100MB
                 im = ax.pcolormesh(gx, gy, gz, cmap=cmap_choice, shading='auto', alpha=0.85)
                 
