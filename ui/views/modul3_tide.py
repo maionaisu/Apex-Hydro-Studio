@@ -325,6 +325,18 @@ class Modul3Tide(QWidget):
     def run_tide_generator(self) -> None:
         if hasattr(self, 'tide_gen') and self.tide_gen.isRunning(): return
         
+        # [HARDENING FATAL SYNC]: Mengambil rentang waktu D-FLOW dari State Manager Modul 1
+        t_start = app_state.get('sim_start_time')
+        t_end = app_state.get('sim_end_time')
+        
+        if not t_start or not t_end:
+            QMessageBox.critical(
+                self, "Fatal Time Desync", 
+                "Batas waktu simulasi (Start/End) belum di-set pada Global State.\n\n"
+                "Silakan kembali ke 'Modul 1: ERA5 Synthesizer', pilih rentang waktu, lalu ekstrak/kunci datanya agar pasut ini sinkron dengan gelombang."
+            )
+            return
+
         # Build dictionary from input forms
         c = {}
         for k, v in self.inp_tides.items():
@@ -341,14 +353,18 @@ class Modul3Tide(QWidget):
         self.btn_gen.setEnabled(False)
         self.btn_gen.setText("⏳ Menulis File Boundary (.bc)...")
         
-        self.tide_gen = TideGeneratorWorker(c, out_dir)
+        self.log_tide.append(f"[SYNC] Merender Pasang Surut dari {t_start} hingga {t_end}")
+        
+        # [NOTE]: Jika workers/tide_worker.py belum di-update untuk menerima t_start & t_end, 
+        # Anda wajib memperbaruinya agar file .bc memiliki rentang yang pas.
+        self.tide_gen = TideGeneratorWorker(c, out_dir, t_start, t_end)
         
         def save_state(path: str):
             self.btn_gen.setEnabled(True)
             self.btn_gen.setText("🌊 TULIS & KUNCI FORCING BOUNDARY (.bc)")
             if path and os.path.exists(path):
                 app_state.update('tide_bc', path)
-                self.log_tide.append("✅ Sinkronisasi LSHA Sukses. File `.bc` (Astronomic) terkunci di Global State. Simulasi kontinu D-FLOW siap dieksekusi.")
+                self.log_tide.append(f"✅ Sinkronisasi LSHA Sukses. File `.bc` (Astronomic) terkunci ke Global State.")
             self.tide_gen.deleteLater()
                 
         self.tide_gen.finished_signal.connect(save_state)
