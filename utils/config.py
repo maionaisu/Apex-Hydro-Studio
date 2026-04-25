@@ -3,6 +3,7 @@
 # ==============================================================================
 import os
 import sys
+import stat
 import logging
 import shutil
 
@@ -47,19 +48,28 @@ def get_project_dirs() -> dict:
                 
     return dirs
 
+def _remove_readonly_handler(func, path, excinfo):
+    """[HARDENING] Callback untuk memaksa penghapusan file Read-Only di Windows."""
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except Exception as e:
+        logger.debug(f"Gagal melepas file lock {path}: {e}")
+
 def cleanup_temp_buffer() -> None:
     """
     [ENTERPRISE SAFETY]: Membersihkan folder buffer temporer untuk mencegah 
-    pembengkakan penggunaan disk setelah proses interpolasi spasial yang berat.
+    pembengkakan penggunaan disk. Dilengkapi dengan pengaman File-Lock Windows.
     """
     temp_dir = os.path.abspath(os.path.join(os.getcwd(), 'Apex_Temp_Buffer'))
     if os.path.exists(temp_dir):
         try:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            # [ENTERPRISE FIX]: Menggunakan onerror untuk menghapus file yang terkunci Read-Only
+            shutil.rmtree(temp_dir, onerror=_remove_readonly_handler)
             os.makedirs(temp_dir, exist_ok=True)
             logger.info("[CONFIG] Temporary buffer telah dibersihkan secara aman.")
         except Exception as e:
-            logger.warning(f"[CONFIG] Gagal membersihkan temp buffer: {e}")
+            logger.warning(f"[CONFIG] Gagal membersihkan temp buffer (mungkin file sedang diakses): {e}")
 
 def get_leaflet_html(mode: str = "era5") -> str:
     """ 
