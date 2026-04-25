@@ -33,21 +33,34 @@ class DepthProfileEngine:
     def calculate_doc_profile(bathy_file: str, transect_pts: list, doc_depth: float, epsg: str) -> str:
         """
         Kalkulasi 2D cross-section Depth of Closure menggunakan transek.
-        Aman terhadap memory leak Matplotlib.
+        Aman terhadap memory leak Matplotlib dan benturan zonasi CRS (WGS84 vs UTM).
         """
         if not os.path.exists(bathy_file):
-            raise FileNotFoundError(f"File batimetri tidak ditemukan: {bathy_file}")
+            raise FileNotFoundError(f"Berkas batimetri tidak ditemukan: {bathy_file}")
             
         if len(transect_pts) < 2:
-            raise ValueError("Pembuatan profil kedalaman memerlukan minimal 2 titik transek.")
+            raise ValueError("Kalkulasi profil kedalaman mensyaratkan setidaknya 2 titik transek (Garis awal ke akhir).")
 
         fig = None
         try:
             # 1. Parsing and coordinate transformation
             df = pd.read_csv(bathy_file, delim_whitespace=True, header=None, names=['x','y','z'], dtype=np.float64)
             tr = Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
+            
+            # Transek dari Leaflet dipastikan berformat Lat/Lon (WGS84), konversi ke UTM
             px, py = tr.transform([p[0] for p in transect_pts], [p[1] for p in transect_pts])
             
+            # [ENTERPRISE FIX]: AI Detektor Sistem Koordinat Batimetri
+            # Jika x atau y bernilai di bawah 180 (derajat geografis), file Batimetri adalah WGS84
+            # Kita WAJIB merubahnya ke UTM sebelum digabungkan dengan garis transek.
+            max_x = df['x'].abs().max()
+            max_y = df['y'].abs().max()
+            if max_x <= 180 and max_y <= 90:
+                logger.info("[DOC ENGINE] Batimetri terdeteksi berformat WGS84. Melakukan transformasi ke UTM otomatis...")
+                df['x'], df['y'] = tr.transform(df['x'].values, df['y'].values)
+            else:
+                logger.info("[DOC ENGINE] Batimetri terdeteksi berformat UTM. Lanjut ke interpolasi.")
+
             # 2. Distance calculation along the transect path
             dists = [0.0]
             for i in range(1, len(px)): 
@@ -61,6 +74,7 @@ class DepthProfileEngine:
             zl = griddata((df['x'], df['y']), df['z'], (x_line, y_line), method='linear')
             if np.isnan(zl).any(): 
                 nan_mask = np.isnan(zl)
+                # Tambal dengan titik terdekat agar kurva solid dan tidak memicu ValueError Matplotlib
                 zl[nan_mask] = griddata((df['x'], df['y']), df['z'], (x_line[nan_mask], y_line[nan_mask]), method='nearest')
                 
             d_line = np.linspace(0, dists[-1], num_pts)
@@ -110,7 +124,7 @@ class DepthProfileEngine:
             
             ax2.plot(d_line, zl, color='#38BDF8', linewidth=2.5, label='Profil Batimetri Transek')
             ax2.axhline(doc_depth, color='#EF4444', linestyle='--', linewidth=2, label=f'Batas DoC ({doc_depth:.2f} m)')
-            ax2.axhline(0, color='#10B981', linestyle='-', linewidth=1.5, label='Mean Sea Level (0.0 m)')
+            ax2.axhline(0, color='#10B981', linestyle='-', linewidth=1.5, label='Rata-Rata Muka Air (0.0 m)')
             
             if doc_found:
                 ax2.scatter(doc_dist, doc_depth, color='#F59E0B', marker='*', s=300, edgecolor='black', zorder=5)
@@ -141,6 +155,7 @@ class DepthProfileEngine:
             raise RuntimeError(f"Profil DoC Gagal: {str(e)}") from e
         finally:
             if fig is not None:
+                fig.clf()
                 plt.close(fig)
 
 
@@ -307,13 +322,11 @@ class MeshBuilderEngine:
                 else: 
                     fm.physics.unifrictcoef = 0.0
                     # Tipe 3 adalah Nikuradse, sangat penting karena Modul 2 melakukan D50 -> Nikuradse.
-                    # Jika menggunakan tipe 4 (Chezy), energi gelombang akan salah secara fisis di zona Clungup.
                     fm.physics.frictyp = 3  
                     log_cb("  ├ [✓] Memaksa Physics `frictyp=3` (Nikuradse) untuk Mangrove Drag Force.")
                     
                 fm.numerics.cflmax = 0.7
                 
-                # [ENTERPRISE TIME FIX]: Parsing Tanggal ke MDU
                 fm.time.refdate = int(t_start.strftime("%Y%m%d"))
                 fm.time.tstop = sim_duration_sec 
                 
@@ -389,7 +402,7 @@ class MeshBuilderEngine:
                 log_cb("■ [COUPLING] Merakit DIMR XML Coupler Dua-Arah (Flow <-> Wave)...")
                 dimr_path = os.path.join(out_dir, "dimr_config.xml")
                 
-                # [TIME COUPLING FIX]: Menggunakan Delta T dari Start dan End, 1800 detik interval Coupling.
+                # Interval Coupling: 1800 detik (Setengah jam) untuk kestabilan pasang surut
                 xml_content = f"""<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <dimrConfig xmlns="http://schemas.deltares.nl/dimr" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.deltares.nl/dimr http://content.oss.deltares.nl/schemas/dimr-1.3.xsd">
   <control>
@@ -460,4 +473,5 @@ class MeshBuilderEngine:
             
         finally:
             if fig_preview is not None:
+                fig_preview.clf()
                 plt.close(fig_preview)
