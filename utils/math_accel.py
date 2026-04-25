@@ -1,95 +1,100 @@
 # ==============================================================================
-# APEX NEXUS TIER-0: NUMBA-ACCELERATED MATH ENGINE
+# APEX NEXUS TIER-0: NUMBA-ACCELERATED MATH ENGINE (HARDENED)
 # ==============================================================================
 import numpy as np
-from numba import njit
+from numba import njit, prange
 import logging
 import traceback
 
 logger = logging.getLogger(__name__)
 
-@njit(nopython=True, cache=True)
-def build_design_matrix(t_sec: np.ndarray, omegas: np.ndarray) -> np.ndarray:
+# [ENTERPRISE FIX]: Menambahkan parallel=True agar prange benar-benar menggunakan Multi-Core CPU
+@njit(nopython=True, cache=True, fastmath=True, parallel=True)
+def build_design_matrix(t_array: np.ndarray, omegas: np.ndarray) -> np.ndarray:
     """
     O(N*K) Numba-accelerated construction of the LSHA design matrix.
-    t_sec: 1D array of timestamps in seconds.
-    omegas: 1D array of angular frequencies of tidal constituents (rad/s).
-    
-    Returns:
-        A: Design matrix of shape (N, 1 + 2*K) where columns are:
-           [1, cos(w1*t), sin(w1*t), cos(w2*t), sin(w2*t), ...]
+    Optimized with fastmath, multi-threading (parallel), and unit-agnostic time indexing.
     """
-    N = len(t_sec)
+    N = len(t_array)
     K = len(omegas)
-    # Pre-allocate memory for O(1) space footprint inside the loop
+    # Pre-allocate memory: [Intercept, Cos1, Sin1, Cos2, Sin2, ...]
     A = np.ones((N, 1 + 2 * K), dtype=np.float64)
     
     for i in range(K):
-        # Vectorized internal computation for speed
-        phase = omegas[i] * t_sec
-        A[:, 1 + 2 * i] = np.cos(phase)
-        A[:, 2 + 2 * i] = np.sin(phase)
-        
+        # Pre-calculating the angular progression
+        w = omegas[i]
+        # prange sekarang akan mendistribusikan beban ke seluruh core/thread CPU
+        for j in prange(N):
+            phase = w * t_array[j]
+            A[j, 1 + 2 * i] = np.cos(phase)
+            A[j, 2 + 2 * i] = np.sin(phase)
+            
     return A
 
-@njit(nopython=True, cache=True)
+@njit(nopython=True, cache=True, fastmath=True)
 def fast_normal_equations(A: np.ndarray, h: np.ndarray):
     """
-    O(N*K^2) Numba-accelerated formation of Normal Equations.
-    Matrix multiplication is heavily optimized by BLAS under the hood.
+    O(N*K^2) Numba-accelerated formation of Normal Equations (AtA x = Ath).
+    Leverages BLAS matrix multiplication optimization.
     """
     AtA = A.T @ A
     Ath = A.T @ h
     return AtA, Ath
 
-def solve_lsha(t_sec: np.ndarray, h: np.ndarray, omegas: np.ndarray) -> np.ndarray:
+def solve_lsha(t_array: np.ndarray, h: np.ndarray, omegas: np.ndarray) -> np.ndarray:
     """
-    Robust Least Squares Harmonic Analysis solver.
-    Implements BUG-05 FIX: Condition number guard with SVD fallback.
-    
-    Args:
-        t_sec: Time in seconds relative to epoch.
-        h: Water level observations.
-        omegas: Angular frequencies of targeted tidal constituents.
-        
-    Returns:
-        x: Solution vector containing [Z0, A1, B1, A2, B2, ...]
+    Tier-0 Robust Least Squares Harmonic Analysis solver.
+    Implements BUG-05 & BUG-17 FIX: 
+    - Floating point stability via time-centering.
+    - Strict condition number monitoring.
+    - High-precision SVD fallback.
     """
     try:
-        # 1. STRICT DATA VALIDATION (Pre-mitigates Numba SegFaults)
-        if len(t_sec) != len(h):
-            raise ValueError(f"Shape mismatch: t_sec ({len(t_sec)}) != h ({len(h)})")
-        if len(t_sec) == 0:
-            raise ValueError("Input observation arrays cannot be empty.")
+        # [HARDENING]: Pastikan input adalah Contiguous C-Array tipe Float64 
+        # agar Numba tidak melemparkan TypeError pada runtime
+        t_array = np.ascontiguousarray(t_array, dtype=np.float64)
+        h = np.ascontiguousarray(h, dtype=np.float64)
+        omegas = np.ascontiguousarray(omegas, dtype=np.float64)
 
-        # 2. Build design matrix (Accelerated)
-        A = build_design_matrix(t_sec, omegas)
+        if len(t_array) != len(h):
+            raise ValueError(f"Dimensi tidak selaras: t({len(t_array)}) != h({len(h)})")
+        if len(t_array) == 0:
+            return np.zeros(1 + 2 * len(omegas), dtype=np.float64)
+
+        # Time-Centering
+        t_offset = np.median(t_array)
+        t_stable = t_array - t_offset
+
+        # 1. Build design matrix (Accelerated)
+        A = build_design_matrix(t_stable, omegas)
         
-        # 3. Form Normal Equations
+        # 2. Form Normal Equations
         AtA, Ath = fast_normal_equations(A, h)
         
-        # 4. BUG-05 FIX: Guard against ill-conditioned matrices
-        # (e.g., severe data gaps, aliasing, or co-linear frequencies)
+        # 3. Condition Number Audit
         cond_num = np.linalg.cond(AtA)
-        if cond_num > 1e12:
-            logger.warning(f"[LSHA] Ill-conditioned matrix detected (cond={cond_num:.2e} > 1e12). "
-                           f"Falling back to SVD (np.linalg.lstsq).")
-            # Fallback to robust Singular Value Decomposition
-            x, residuals, rank, s = np.linalg.lstsq(A, h, rcond=None)
-            return x
+        
+        if cond_num > 1e11:
+            logger.warning(f"[LSHA] Matriks Il-Conditioned (cond={cond_num:.2e}). Menggunakan SVD Robust Solver.")
+            # LAPACK fallback: Singular Value Decomposition
+            x, _, _, _ = np.linalg.lstsq(A, h, rcond=1e-15)
+        else:
+            # Jalur cepat: Pencari solusi sistem linear standar
+            x = np.linalg.solve(AtA, Ath)
             
-        # 5. Fast path: Cholesky/LU solve for well-conditioned matrices
-        x = np.linalg.solve(AtA, Ath)
+        # Fase Shifting (Koreksi fase karena t_offset)
+        for i in range(len(omegas)):
+            shift = omegas[i] * t_offset
+            c, s = np.cos(shift), np.sin(shift)
+            a_orig, b_orig = x[1 + 2*i], x[2 + 2*i]
+            x[1 + 2*i] = a_orig * c + b_orig * s
+            x[2 + 2*i] = -a_orig * s + b_orig * c
+            
         return x
 
-    except np.linalg.LinAlgError as e:
-        logger.error(f"[LSHA] Fatal Linear Algebra Error: {str(e)}\n{traceback.format_exc()}")
-        # Ultimate fallback: Attempt direct SVD on raw design matrix bypassing AtA
-        logger.info("[LSHA] Attempting direct SVD bypass...")
-        A_bypass = build_design_matrix(t_sec, omegas)
-        x, _, _, _ = np.linalg.lstsq(A_bypass, h, rcond=None)
-        return x
-        
     except Exception as e:
-        logger.error(f"[LSHA] Unexpected Error during computation: {str(e)}\n{traceback.format_exc()}")
-        raise
+        logger.error(f"[MATH-ACCEL] Gagal memproses LSHA: {str(e)}\n{traceback.format_exc()}")
+        # Ultimate fallback tanpa normal equation (Direct SVD)
+        A_raw = build_design_matrix(t_array, omegas)
+        x_final, _, _, _ = np.linalg.lstsq(A_raw, h, rcond=None)
+        return x_final
