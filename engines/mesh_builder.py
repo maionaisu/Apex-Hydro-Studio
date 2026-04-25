@@ -150,7 +150,7 @@ class MeshBuilderEngine:
         """
         Fungsi utama Orkestrator DIMR. 
         Mendukung DECOUPLED BUILD: Hanya membuat D-Flow atau D-Waves atau Keduanya.
-        Diperkuat dengan Two-Way DIMR XML Coupler dan Auto-Sync Boundary Name.
+        Diperkuat dengan sinkronisasi fisika, waktu simulasi, dan XML Coupler.
         """
         if not HAS_DELTARES: 
             raise ImportError("Library dfm_tools, hydrolib-core, atau meshkernel tidak terinstal.")
@@ -159,7 +159,7 @@ class MeshBuilderEngine:
         mesh2d = None  # Inisialisasi pengaman agar terhindar dari UnboundLocalError
         
         try:
-            # 1. Unpack Parameters
+            # 1. Unpack Parameters & Time Sync Constraint
             b_mode = params.get('build_mode', 'coupled')
             epsg = str(params.get('epsg', '32749'))
             aoi_bounds = params['aoi_bounds']
@@ -167,6 +167,16 @@ class MeshBuilderEngine:
             bathy_file = params['bathy_file']
             ldb_file = params.get('ldb_file', '')
             out_dir = os.path.abspath(params['out_dir'])
+            
+            # [ENTERPRISE TIME FIX]: Mencegah Time Domain Mismatch antar Modul
+            t_start_iso = global_state.get('sim_start_time')
+            t_end_iso = global_state.get('sim_end_time')
+            if not t_start_iso or not t_end_iso:
+                raise ValueError("Waktu simulasi (sim_start_time / sim_end_time) belum diset dari Modul 1. DIMR akan Gagal.")
+            
+            t_start = datetime.fromisoformat(t_start_iso)
+            t_end = datetime.fromisoformat(t_end_iso)
+            sim_duration_sec = (t_end - t_start).total_seconds()
             
             os.makedirs(out_dir, exist_ok=True)
             progress_cb(10)
@@ -265,17 +275,15 @@ class MeshBuilderEngine:
                 tide_bc_file = params.get('tide_bc', '')
                 if tide_bc_file and os.path.exists(tide_bc_file):
                     
-                    # [CRITICAL BUG-FIX]: Sinkronisasi Boundary Name
-                    # Menyamakan nama internal file .bc Modul 3 agar sesuai dengan posisi boundary Modul 4.
+                    # Sinkronisasi Boundary Name
                     target_bnd_name = f"{bnd_dir}_Ocean_Boundary"
                     try:
                         with open(tide_bc_file, 'r', encoding='utf-8') as f:
                             bc_data = f.read()
-                        # Meretas dan mengganti nama target via regex
                         bc_data = re.sub(r"Name\s*=\s*\w+_Ocean_Boundary", f"Name                            = {target_bnd_name}", bc_data)
                         with open(tide_bc_file, 'w', encoding='utf-8') as f:
                             f.write(bc_data)
-                        log_cb(f"  ├ [✓] Sinkronisasi nama Boundary Condition (.bc) ke: {target_bnd_name}")
+                        log_cb(f"  ├ [✓] Sinkronisasi nama Boundary (.bc) ke: {target_bnd_name}")
                     except Exception as e:
                         logger.warning(f"Gagal menyinkronkan nama boundary di dalam file .bc: {e}")
 
@@ -292,15 +300,22 @@ class MeshBuilderEngine:
                 fm.geometry.netfile = "Flow_Mesh.nc"
                 if tide_bc_file or sediment_file: fm.external_forcing.extforcefilenew = "apex_forcing.ext"
                 
+                # [THESIS PHYSICS ALIGNMENT]: Friction Type untuk Mangrove
                 fm.physics.dicoww = 0.1 
-                if not sediment_file: fm.physics.unifrictcoef = 0.023 
+                if not sediment_file: 
+                    fm.physics.unifrictcoef = 0.023 
                 else: 
                     fm.physics.unifrictcoef = 0.0
-                    fm.physics.frictyp = 4 
+                    # Tipe 3 adalah Nikuradse, sangat penting karena Modul 2 melakukan D50 -> Nikuradse.
+                    # Jika menggunakan tipe 4 (Chezy), energi gelombang akan salah secara fisis di zona Clungup.
+                    fm.physics.frictyp = 3  
+                    log_cb("  ├ [✓] Memaksa Physics `frictyp=3` (Nikuradse) untuk Mangrove Drag Force.")
                     
                 fm.numerics.cflmax = 0.7
-                fm.time.refdate = int(datetime.now().strftime("%Y%m%d"))
-                fm.time.tstop = 86400.0 * 2 
+                
+                # [ENTERPRISE TIME FIX]: Parsing Tanggal ke MDU
+                fm.time.refdate = int(t_start.strftime("%Y%m%d"))
+                fm.time.tstop = sim_duration_sec 
                 
                 fm_path = os.path.join(out_dir, "Apex_Flow.mdu")
                 fm.filepath = fm_path
@@ -374,14 +389,13 @@ class MeshBuilderEngine:
                 log_cb("■ [COUPLING] Merakit DIMR XML Coupler Dua-Arah (Flow <-> Wave)...")
                 dimr_path = os.path.join(out_dir, "dimr_config.xml")
                 
-                # [CRITICAL BUG-FIX]: Menginjeksi tag <coupler> agar D-FLOW dan SWAN
-                # secara aktif bertukar data level air, arus, dan tekanan gelombang.
-                xml_content = """<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+                # [TIME COUPLING FIX]: Menggunakan Delta T dari Start dan End, 1800 detik interval Coupling.
+                xml_content = f"""<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <dimrConfig xmlns="http://schemas.deltares.nl/dimr" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.deltares.nl/dimr http://content.oss.deltares.nl/schemas/dimr-1.3.xsd">
   <control>
     <parallel>
       <startGroup>
-        <time>0 86400 86400</time>
+        <time>0 1800 {int(sim_duration_sec)}</time>
         <coupler name="flow2wave" />
         <coupler name="wave2flow" />
         <start name="Flow" />
