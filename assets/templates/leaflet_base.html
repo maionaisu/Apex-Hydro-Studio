@@ -8,6 +8,18 @@
     <style> 
         body { margin: 0; padding: 0; background: #030712; overflow: hidden; } 
         #map { width: 100vw; height: 100vh; } 
+        
+        /* [ENTERPRISE FIX]: Inversi UI Leaflet Draw agar kompatibel dengan Dark Mode Fintech Slate */
+        .leaflet-bar { border: 1px solid #3A3F4A !important; border-radius: 6px !important; overflow: hidden; }
+        .leaflet-bar a { background-color: #1F2227 !important; color: #8FC9DC !important; border-bottom: 1px solid #3A3F4A !important; }
+        .leaflet-bar a:hover { background-color: #2D3139 !important; color: #595FF7 !important; }
+        
+        /* Inversi ikon draw yang defaultnya hitam agar menjadi abu-abu cerah/putih */
+        .leaflet-draw-toolbar a { filter: invert(0.8) hue-rotate(180deg); } 
+        
+        /* Modifikasi tooltip darurat draw */
+        .leaflet-draw-tooltip { background: #0F172A !important; color: #F8FAFC !important; border: 1px solid #F59E0B !important; }
+        .leaflet-draw-tooltip::before { border-right-color: #F59E0B !important; }
     </style>
 </head>
 <body>
@@ -16,24 +28,57 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <script>
+        // [ENTERPRISE SAFEGUARD]: Mencegah ReferenceError saat HTML di-load langsung tanpa config.py
+        // String dipisah agar tidak ikut terganti (replace) oleh backend Python saat kompilasi
+        if (typeof window["__IS_" + "POSTPROC__"] === 'undefined') {
+            window["__IS_" + "POSTPROC__"] = false;
+        }
+        if (typeof window["__DRAW_" + "OPTS__"] === 'undefined') {
+            window["__DRAW_" + "OPTS__"] = false;
+        }
+
         var map = L.map('map', { zoomControl: false }).setView([-8.442, 112.666], 10);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }).addTo(map);
+        
+        // [COMPLIANCE FIX]: Menambahkan atribusi legal CARTO
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { 
+            maxZoom: 20,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        }).addTo(map);
+        
         L.control.zoom({ position: 'bottomright' }).addTo(map);
+        
         var drawnItems = new L.FeatureGroup(); 
         map.addLayer(drawnItems);
         var isPostProc = __IS_POSTPROC__;
+        
         if (!isPostProc) {
-            var drawControl = new L.Control.Draw({ edit: { featureGroup: drawnItems }, draw: { __DRAW_OPTS__, circle: false, marker: false, circlemarker: false } });
+            // [BUG FIX]: Menghilangkan override hardcode yang mematikan kapabilitas dari config.py
+            var drawControl = new L.Control.Draw({ 
+                edit: { featureGroup: drawnItems }, 
+                draw: { __DRAW_OPTS__, circlemarker: false } 
+            });
             map.addControl(drawControl);
         }
         
         var pyBridge = null; 
+        
+        // [FATAL BUG FIX]: Menghentikan interval SEBELUM instansiasi QWebChannel untuk mencegah IPC Memory Leak
+        var bridgeAttempts = 0;
         var initBridge = setInterval(function() {
+            bridgeAttempts++;
             if (typeof qt !== 'undefined' && qt.webChannelTransport) {
+                clearInterval(initBridge); // Hentikan loop seketika sebelum async call!
                 new QWebChannel(qt.webChannelTransport, function(channel) { 
-                    pyBridge = channel.objects.bridge; 
-                    clearInterval(initBridge);
+                    if (channel.objects && channel.objects.bridge) {
+                        pyBridge = channel.objects.bridge; 
+                        console.log("WebChannel bridge successfully established.");
+                    } else {
+                        console.error("Python bridge object not found in QWebChannel.");
+                    }
                 });
+            } else if (bridgeAttempts > 100) { // Timeout setelah ~10 detik
+                console.error("QWebChannel initialization failed. qt.webChannelTransport is undefined.");
+                clearInterval(initBridge);
             }
         }, 100);
         
@@ -44,6 +89,7 @@
             if (pyBridge) {
                 if (type === 'rectangle' || type === 'polygon') {
                     var bounds = layer.getBounds();
+                    // Proteksi Payload via JSON.stringify
                     pyBridge.receive_bbox(JSON.stringify({N: bounds.getNorth(), S: bounds.getSouth(), E: bounds.getEast(), W: bounds.getWest()}));
                 } else if (type === 'polyline') {
                     var coords = layer.getLatLngs().map(ll => [ll.lat, ll.lng]);
@@ -53,12 +99,23 @@
         });
         
         function clearMap() { drawnItems.clearLayers(); }
+        
         function addGeoJSON(geojsonData, color) { 
+            // [SAFEGUARD]: Menangani kemungkinan string JSON dari Python f-strings yang lolos parsing
+            if (typeof geojsonData === 'string') {
+                try { geojsonData = JSON.parse(geojsonData); } 
+                catch (e) { console.error("Invalid GeoJSON string", e); return; }
+            }
+            
             var layer = L.geoJSON(geojsonData, { style: function(f) { return {color: color, weight: 3}; } });
             layer.eachLayer(function(l) {
                 drawnItems.addLayer(l);
             });
-            map.fitBounds(drawnItems.getBounds()); 
+            
+            // [BUG FIX]: Validasi sebelum fitBounds agar Peta tidak crash saat Layer kosong (NaN/Inf bounding box)
+            if (drawnItems.getLayers().length > 0) {
+                map.fitBounds(drawnItems.getBounds()); 
+            }
         }
     </script>
 </body>
