@@ -2,10 +2,9 @@
 # APEX NEXUS TIER-0: ERA5 DOWNLOADER WORKER (QThread)
 # ==============================================================================
 import os
+import sys
 import logging
 import traceback
-import calendar
-from datetime import datetime, timedelta
 from PyQt6.QtCore import QThread, pyqtSignal
 
 logger = logging.getLogger(__name__)
@@ -17,14 +16,26 @@ try:
 except ImportError:
     HAS_CDSAPI = False
 
+
+class BlackholeStream:
+    """
+    [TIER-0 SAFEGUARD] Menelan semua output/print dari cdsapi & tqdm secara diam-diam.
+    Menghancurkan bug mematikan: "NoneType object has no attribute 'write'" di dalam QThread PyQt.
+    """
+    def write(self, text):
+        pass # Buang semua teks progress bar
+        
+    def flush(self):
+        pass # Buang perintah flush
+
+
 class ERA5DownloaderWorker(QThread):
     """
     [TIER-0] Background Worker untuk mengunduh data iklim dari CDS Copernicus.
-    Digabungkan (Merged) & Diperkeras (Hardened) dengan:
-    1. Kompatibilitas CDS API v3 (Sistem UUID Baru).
-    2. Eksekusi Thread-Safe (quiet=True) mencegah crash sys.stdout GUI.
-    3. Auto-Buffer Geospasial (+0.5 Derajat) untuk mencegah Empty MARS Area.
-    4. Sistem Pembersihan Mandiri (Clean-Up) untuk file .nc yang korup/gagal unduh.
+    Hardened with:
+    1. Stealth .cdsapirc Auto-generation (Like setup_cds.py).
+    2. Blackhole Stream to prevent QThread sys.stdout crash.
+    3. Old-School Payload compatibility ("data_format": "netcdf", "unarchived").
     """
     log_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bool, str)
@@ -45,49 +56,59 @@ class ERA5DownloaderWorker(QThread):
             
         self.out_file = os.path.abspath(out_file)
 
+    def setup_cdsapirc(self):
+        """Menduplikasi logika setup_cds.py lama milik user secara otomatis di background."""
+        home_dir = os.path.expanduser("~")
+        file_path = os.path.join(home_dir, ".cdsapirc")
+        
+        config_content = (
+            "url: https://cds.climate.copernicus.eu/api\n"
+            f"key: {self.api_key}\n"
+        )
+        
+        with open(file_path, "w") as f:
+            f.write(config_content)
+            
+        self.log_signal.emit("■ Kredensial CDS disuntikkan secara aman via ~/.cdsapirc")
+
     def run(self) -> None:
-        """
-        Dieksekusi di thread terpisah. Sama sekali tidak memanipulasi UI secara langsung.
-        Mengisolasi kredensial API dengan aman untuk mencegah Race Condition.
-        """
         if not HAS_CDSAPI:
-            self.log_signal.emit("❌ [FATAL] Pustaka 'cdsapi' tidak ditemukan. Buka terminal dan jalankan: pip install cdsapi")
+            self.log_signal.emit("❌ [FATAL] Pustaka 'cdsapi' tidak ditemukan. Install via: pip install cdsapi")
             self.finished_signal.emit(False, "")
             return
 
+        # [CRITICAL FIX]: Simpan state asli sys.stdout
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+
         try:
-            self.log_signal.emit("■ Memverifikasi direktori output dan otentikasi CDS API...")
+            self.log_signal.emit("■ Memverifikasi direktori output dan otentikasi...")
             
-            # 1. Validasi Ketat Keamanan Direktori
             out_dir = os.path.dirname(self.out_file)
             if not os.path.exists(out_dir):
                 os.makedirs(out_dir, exist_ok=True)
             
-            self.log_signal.emit("■ Menginisiasi otentikasi CDS API v3 (Sistem UUID)...")
+            # 1. Eksekusi Setup CDS (seperti setup_cds.py lama)
+            self.setup_cdsapirc()
             
-            # 2. Inisialisasi Klien API (Thread-Safe)
-            # Parameter quiet=True mutlak diperlukan agar cdsapi tidak berusaha melakukan print
-            # progress bar ke Terminal GUI yang bernilai None (Mencegah "NoneType object has no attribute write")
-            c = cdsapi.Client(
-                url="https://cds.climate.copernicus.eu/api",
-                key=self.api_key,
-                quiet=True, 
-                verify=True
-            )
+            # 2. Pasang Perangkap Output (Blackhole) agar cdsapi tidak crash di UI Thread
+            dummy_stream = BlackholeStream()
+            sys.stdout = dummy_stream
+            sys.stderr = dummy_stream
 
-            # 3. Solusi Spasial MARS: Mencegah "Empty area crop/mask"
-            # ERA5 beresolusi ~27km (0.25 derajat). Membutuhkan buffer area agar piksel satelit tertangkap.
-            N = float(self.bbox['N']) + 0.5
-            S = float(self.bbox['S']) - 0.5
-            E = float(self.bbox['E']) + 0.5
-            W = float(self.bbox['W']) - 0.5
-            
-            # Area Format Copernicus CDS v3: [North, West, South, East]
-            area_bounds = [N, W, S, E]
-            
-            self.log_signal.emit(f"  ├ [BUFFER SPASIAL] Batas satelit diperluas menjadi: N{N:.2f}, S{S:.2f}, E{E:.2f}, W{W:.2f}")
+            # 3. Inisiasi Klien (kini otomatis membaca dari ~/.cdsapirc)
+            c = cdsapi.Client(quiet=True, verify=True)
 
-            # 4. Kompilasi Parameter Waktu
+            # 4. Solusi Spasial MARS
+            N = float(self.bbox['N'])
+            S = float(self.bbox['S'])
+            E = float(self.bbox['E'])
+            W = float(self.bbox['W'])
+            
+            area_bounds = [N, W, S, E] # Format Copernicus CDS: [North, West, South, East]
+            self.log_signal.emit(f"  ├ Batas satelit dieksekusi pada: N{N:.2f}, S{S:.2f}, E{E:.2f}, W{W:.2f}")
+
+            # 5. Perakitan Parameter Waktu
             years = list(set([str(y) for y in range(self.dt_start.year, self.dt_end.year + 1)]))
             
             if self.dt_start.year == self.dt_end.year:
@@ -95,14 +116,10 @@ class ERA5DownloaderWorker(QThread):
             else:
                 months = [f"{m:02d}" for m in range(1, 13)]
                 
-            # Menghindari ralat hari dengan meminta penuh 31 hari. 
-            # Server MARS cukup cerdas untuk mengabaikan tanggal tidak valid (seperti 31 Februari)
             days = [f"{d:02d}" for d in range(1, 32)]
-            
-            # Resolusi waktu 6-jam untuk menyeimbangkan presisi kalibrasi dan kecepatan unduh
             times = ["00:00", "06:00", "12:00", "18:00"]
 
-            # 5. Perakitan Muatan Permintaan (Request Payload)
+            # 6. Perakitan Payload (Menduplikasi era5_download.py lama)
             req = {
                 "product_type": ["reanalysis"],
                 "variable": self.params,
@@ -111,36 +128,50 @@ class ERA5DownloaderWorker(QThread):
                 "day": days,
                 "time": times,
                 "area": area_bounds,
-                "download_format": "unzipped_netcdf" # Format spesifik CDS API v3 agar tidak menjadi file .zip
+                "data_format": "netcdf",          # <--- Format sakti dari skrip lama
+                "download_format": "unarchived"   # <--- Format sakti dari skrip lama
             }
             
             str_start = self.dt_start.strftime('%Y-%m-%d')
             str_end = self.dt_end.strftime('%Y-%m-%d')
-            self.log_signal.emit(f"■ Menghubungi server Copernicus MARS. Rentang: {str_start} s/d {str_end}...")
-            self.log_signal.emit("⏳ Proses ini dapat memakan waktu 1-15 Menit tergantung antrean server (Queue).")
             
-            logger.info(f"[ERA5] Memulai request CDS API. Payload: {req}")
+            # Kembalikan stdout sejenak hanya untuk print log ke UI
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
+            self.log_signal.emit(f"■ Menghubungi server CDS. Rentang: {str_start} s/d {str_end}...")
+            self.log_signal.emit("⏳ Estimasi waktu: 1-15 Menit. UI tetap responsif, harap bersabar.")
+            
+            # Matikan lagi stdout sebelum mengeksekusi unduhan yang berat
+            sys.stdout = dummy_stream
+            sys.stderr = dummy_stream
+            
+            logger.info(f"[ERA5] Payload: {req}")
 
-            # 6. Eksekusi Permintaan API (Blocking call, aman di dalam QThread)
+            # 7. Eksekusi Unduhan
             c.retrieve("reanalysis-era5-single-levels", req, self.out_file)
             
-            # Validasi integritas berkas pasca-unduh
-            if not os.path.exists(self.out_file) or os.path.getsize(self.out_file) == 0:
-                raise RuntimeError("File hasil unduhan dari CDS kosong atau gagal ditulis secara utuh ke disk.")
+            # Kembalikan terminal ke kondisi normal pasca-unduh
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
             
-            self.log_signal.emit("✅ Ekstraksi Satelit Selesai. Data NetCDF berhasil diverifikasi dan disimpan.")
+            if not os.path.exists(self.out_file) or os.path.getsize(self.out_file) < 1000:
+                raise RuntimeError("File NetCDF kosong atau gagal diunduh sempurna (< 1KB).")
+            
+            self.log_signal.emit("✅ Ekstraksi Satelit Selesai. NetCDF berhasil disimpan.")
             self.finished_signal.emit(True, self.out_file)
             
         except Exception as e:
-            # 7. SECURITY CLEAN-UP: Mencegah file NetCDF yang korup tersisa di memori penyimpanan
+            # Failsafe: Selalu kembalikan terminal jika terjadi error
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
+            
             if os.path.exists(self.out_file):
                 try:
                     os.remove(self.out_file)
-                    logger.debug(f"[ERA5] Membersihkan sisa file yang korup/tidak lengkap: {self.out_file}")
-                except Exception as cleanup_err:
-                    logger.warning(f"[ERA5] Gagal menghapus file sementara yang korup: {cleanup_err}")
+                except Exception:
+                    pass
             
             error_details = f"{str(e)}\n{traceback.format_exc()}"
-            logger.error(f"[FATAL CDS API] Kegagalan Komunikasi Satelit: {error_details}")
-            self.log_signal.emit(f"❌ Kegagalan Koneksi/Sistem CDS MARS: {str(e)}")
+            logger.error(f"[FATAL CDS API] Kegagalan Komunikasi: {error_details}")
+            self.log_signal.emit(f"❌ Kegagalan Koneksi/Sistem CDS: {str(e)}")
             self.finished_signal.emit(False, "")
