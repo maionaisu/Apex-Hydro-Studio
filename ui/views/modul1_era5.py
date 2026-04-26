@@ -4,16 +4,19 @@
 import os
 import logging
 import traceback
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
-                             QFormLayout, QLineEdit, QLabel, QPushButton, 
-                             QDateTimeEdit, QTextEdit, QFileDialog, QMessageBox, QFrame, 
-                             QScrollArea, QTableWidget, QTableWidgetItem, QTabWidget, 
-                             QListWidget, QAbstractItemView, QListWidgetItem, QHeaderView, QSplitter)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, 
+                             QLineEdit, QLabel, QPushButton, QDateTimeEdit, 
+                             QTextEdit, QFileDialog, QMessageBox, QFrame, 
+                             QTableWidget, QTableWidgetItem, QTabWidget, 
+                             QListWidget, QAbstractItemView, QListWidgetItem, 
+                             QHeaderView, QSplitter)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtCore import Qt, QDateTime, QSettings
 from PyQt6.QtGui import QColor, QCursor
 
+# Mengimpor komponen Flexbox dari core_widgets
+from ui.components.core_widgets import FlexScrollArea, CardWidget, ModernButton
 from ui.components.web_bridge import WebBridge
 from utils.config import get_leaflet_html
 from workers.era5_worker import ERA5DownloaderWorker
@@ -21,42 +24,6 @@ from engines.era5_extractor import ERA5Extractor, HAS_XARRAY
 from core.state_manager import app_state
 
 logger = logging.getLogger(__name__)
-
-# --- ENTERPRISE QSS STYLESHEETS (FINTECH SLATE ADAPTATION) ---
-STYLE_GROUPBOX = """
-    QGroupBox { background-color: #2D3139; border: 1px solid #3A3F4A; border-radius: 12px; margin-top: 15px; padding-top: 35px; font-weight: 800; color: #FFFFFF; font-size: 14px; }
-    QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 6px 16px; background-color: transparent; color: #8FC9DC; top: 8px; left: 10px; }
-"""
-STYLE_INPUTS = """
-    QLineEdit, QDateTimeEdit { background-color: #1F2227; border: 1px solid #3A3F4A; border-radius: 8px; padding: 10px 14px; color: #FFFFFF; font-size: 13px; font-family: 'Consolas', monospace; }
-    QLineEdit:focus, QDateTimeEdit:focus { border: 1px solid #595FF7; background-color: #2D3139; }
-    QDateTimeEdit::drop-down { border: none; width: 24px; }
-"""
-STYLE_TABLE_LIST = """
-    QListWidget, QTableWidget { background-color: #1F2227; color: #FFFFFF; gridline-color: #3A3F4A; border: 1px solid #3A3F4A; border-radius: 8px; font-family: 'Consolas', monospace; }
-    QListWidget::item { padding: 8px 12px; border-radius: 6px; margin-bottom: 2px; }
-    QListWidget::item:hover:!selected { background-color: #2D3139; }
-    QListWidget::item:selected { background-color: #595FF7; color: #FFFFFF; }
-    QHeaderView::section { background-color: #2D3139; color: #8FC9DC; padding: 8px; font-weight: 800; border: none; border-bottom: 1px solid #3A3F4A; border-right: 1px solid #3A3F4A; }
-    QTableWidget::item:selected { background-color: #595FF7; color: #FFFFFF; }
-"""
-STYLE_BTNS = """
-    QPushButton#PrimaryBtn { background-color: #595FF7; color: #FFFFFF; border: none; border-radius: 10px; padding: 14px 16px; font-weight: 900; font-size: 14px; }
-    QPushButton#PrimaryBtn:hover { background-color: #7176F8; }
-    QPushButton#PrimaryBtn:disabled { background-color: #3A3F4A; color: #6B7280; }
-    QPushButton#OutlineBtn { background-color: transparent; color: #8FC9DC; border: 1px solid #3A3F4A; border-radius: 8px; padding: 10px 16px; font-weight: 800; font-size: 13px; }
-    QPushButton#OutlineBtn:hover { background-color: rgba(143, 201, 220, 0.1); border-color: #8FC9DC; }
-    QPushButton#DangerBtn { background-color: transparent; color: #FC3F4D; border: 1px solid #3A3F4A; border-radius: 8px; padding: 10px 16px; font-weight: 800; font-size: 13px; }
-    QPushButton#DangerBtn:hover { background-color: rgba(252, 63, 77, 0.1); border-color: #FC3F4D; }
-"""
-STYLE_TABS = """
-    QTabWidget::pane { border: 1px solid #3A3F4A; border-radius: 12px; background: #1E2128; }
-    QTabBar::tab { background: #1F2227; color: #9CA3AF; padding: 12px 20px; border-top-left-radius: 8px; border-top-right-radius: 8px; margin-right: 4px; font-weight: 800; }
-    QTabBar::tab:selected { background: #2D3139; color: #8FC9DC; border-bottom: 3px solid #8FC9DC; }
-"""
-
-LABEL_STYLE = "QLabel { color: #9CA3AF; font-weight: bold; font-size: 13px; }"
-
 
 class Modul1ERA5(QWidget):
     def __init__(self, parent=None):
@@ -72,25 +39,26 @@ class Modul1ERA5(QWidget):
         self.setup_ui()
 
     def setup_ui(self) -> None:
-        self.setStyleSheet(f"{STYLE_GROUPBOX} {STYLE_INPUTS} {STYLE_TABLE_LIST} {STYLE_BTNS} {STYLE_TABS}")
-        
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(24, 24, 24, 24)
-        main_layout.setSpacing(16)
+        main_layout.setContentsMargins(0, 0, 0, 0) # Margin diurus oleh FlexScrollArea
         
-        # --- HEADER (FINTECH STYLE) ---
+        # 1. BUNGKUS DENGAN FLEX SCROLL AREA UNTUK MENCEGAH "CEMET"
+        self.scroll_base = FlexScrollArea(self)
+        
+        # --- HEADER ---
         head = QVBoxLayout()
         t = QLabel("Metocean Synthesizer (ERA5)")
         t.setStyleSheet("font-size: 26px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px;")
         
-        # [ENTERPRISE FIX]: Menggunakan HTML Div untuk text-align justify dan line-height di PyQt
         d = QLabel("<div style='text-align: justify; line-height: 1.5;'>Unduh Data Copernicus CDS (Sistem Baru), Ekstrak Kondisi Awal (Initial Condition), dan Generasi Macro-AOI Otomatis dengan penyesuaian buffer spasial untuk mencegah kegagalan Crop MARS.</div>")
         d.setStyleSheet("color: #9CA3AF; font-size: 14px;")
         d.setWordWrap(True)
         head.addWidget(t)
         head.addWidget(d)
-        main_layout.addLayout(head)
+        head.setContentsMargins(0, 0, 0, 10)
+        self.scroll_base.add_layout(head)
         
+        # --- SPLITTER UTAMA ---
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
         splitter.setStyleSheet("QSplitter::handle { background-color: transparent; height: 12px; }")
@@ -130,7 +98,6 @@ class Modul1ERA5(QWidget):
         l1 = QVBoxLayout(t1)
         l1.setContentsMargins(20, 24, 20, 20)
         
-        # [ENTERPRISE FIX]: Teks penjelasan yang rapi
         lbl_msg = QLabel("<div style='text-align: justify; line-height: 1.5;'>💡 Gunakan fitur Draw Rectangle pada toolbar peta untuk menentukan area makro. Sistem akan otomatis menambahkan <b>buffer spasial 0.5°</b> (≈ 55km) saat mengunduh untuk mencegah <i>Empty Area Mask Error</i> pada server satelit.</div>")
         lbl_msg.setStyleSheet("color: #9CA3AF; font-size: 13px;")
         lbl_msg.setWordWrap(True)
@@ -147,7 +114,7 @@ class Modul1ERA5(QWidget):
         t2 = QWidget()
         l2 = QVBoxLayout(t2)
         l2.setContentsMargins(20, 20, 20, 20)
-        lbl_aoi = QLabel("Request Bounds (Lat/Lon):"); lbl_aoi.setStyleSheet(LABEL_STYLE)
+        lbl_aoi = QLabel("Request Bounds (Lat/Lon):")
         l2.addWidget(lbl_aoi)
         
         self.tbl_bbox = QTableWidget(4, 1)
@@ -170,46 +137,27 @@ class Modul1ERA5(QWidget):
         splitter.addWidget(top_widget)
         
         # ==============================================================================
-        # 2. BOTTOM SECTION (SCROLLABLE CONTROLS)
+        # 2. BOTTOM SECTION (CARD WIDGETS)
         # ==============================================================================
         bot_widget = QWidget()
-        bot_layout = QVBoxLayout(bot_widget)
-        bot_layout.setContentsMargins(0, 0, 0, 0)
+        bot_layout = QHBoxLayout(bot_widget)
+        bot_layout.setContentsMargins(0, 10, 0, 0)
+        bot_layout.setSpacing(20)
         
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("""
-            QScrollArea { background-color: transparent; }
-            QScrollBar:vertical { background: transparent; width: 8px; margin: 0px; }
-            QScrollBar::handle:vertical { background: #3A3F4A; min-height: 30px; border-radius: 4px; }
-        """)
-        
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(0, 5, 0, 0)
-        
-        ctrl = QHBoxLayout()
-        ctrl.setSpacing(25)
-        
-        # ---------------------------------------------------------
         # KIRI BAWAH: CDS API & Request Builder
-        # ---------------------------------------------------------
-        c1 = QVBoxLayout()
-        
-        grp0 = QGroupBox("1. Kredensial CDS API & Target Variabel")
-        g0 = QFormLayout(grp0)
-        g0.setHorizontalSpacing(16)
-        g0.setVerticalSpacing(16)
+        grp0 = CardWidget("1. Kredensial CDS API & Target Variabel")
         
         self.inp_api = QLineEdit()
-        # [ENTERPRISE FIX]: Mengganti format API Key menjadi format sistem baru CDS (UUID)
         self.inp_api.setPlaceholderText("Paste API Key Baru CDS (Contoh UUID: 24af6dec-...)")
         self.inp_api.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
         cached_api = self.settings.value('cds_api', '')
         if cached_api: self.inp_api.setText(cached_api)
         
-        g0.addRow(QLabel("API Key:", styleSheet=LABEL_STYLE), self.inp_api)
+        # Menggunakan Grid Layout internal untuk Form
+        g0 = QFormLayout()
+        g0.setHorizontalSpacing(16)
+        g0.setVerticalSpacing(16)
+        g0.addRow(QLabel("API Key:"), self.inp_api)
         
         self.var_list = QListWidget()
         self.var_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
@@ -239,7 +187,7 @@ class Modul1ERA5(QWidget):
                 if v_id in default_selected: item.setSelected(True)
             self.var_list.addItem(item)
 
-        g0.addRow(QLabel("Katalog:", styleSheet=LABEL_STYLE), self.var_list)
+        g0.addRow(QLabel("Katalog:"), self.var_list)
         
         safe_end_dt = QDateTime.currentDateTime().addDays(-5) 
         self.dt_start = QDateTimeEdit(safe_end_dt.addYears(-1))
@@ -250,7 +198,6 @@ class Modul1ERA5(QWidget):
         self.dt_end.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.dt_end.setCalendarPopup(True)
         
-        # Memicu Time Sync saat tanggal diubah
         self.dt_start.dateTimeChanged.connect(self._sync_time_to_state)
         self.dt_end.dateTimeChanged.connect(self._sync_time_to_state)
         
@@ -258,33 +205,21 @@ class Modul1ERA5(QWidget):
         h_date.addWidget(self.dt_start)
         h_date.addWidget(QLabel(" s/d ", styleSheet="color:#9CA3AF; font-weight:bold;"))
         h_date.addWidget(self.dt_end)
-        g0.addRow(QLabel("Rentang:", styleSheet=LABEL_STYLE), h_date)
+        g0.addRow(QLabel("Rentang:"), h_date)
+        grp0.add_layout(g0)
         
-        self.btn_dl_era5 = QPushButton("↓ Mulai Unduh dari Server Copernicus (.nc)")
-        self.btn_dl_era5.setObjectName("PrimaryBtn")
-        self.btn_dl_era5.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_dl_era5 = ModernButton("↓ Mulai Unduh dari Server Copernicus (.nc)", "primary")
         self.btn_dl_era5.clicked.connect(self.run_era5_downloader)
-        g0.addRow(self.btn_dl_era5)
+        grp0.add_widget(self.btn_dl_era5)
         
-        c1.addWidget(grp0)
-        c1.addStretch()
-        ctrl.addLayout(c1, stretch=5)
+        bot_layout.addWidget(grp0, stretch=5)
         
-        # ---------------------------------------------------------
         # KANAN BAWAH: Metadata Reader & Manual Override
-        # ---------------------------------------------------------
-        c2 = QVBoxLayout()
+        grp2 = CardWidget("2. Macro-Boundary (Auto-AOI) & Ekstraksi IC")
         
-        grp2 = QGroupBox("2. Macro-Boundary (Auto-AOI) & Ekstraksi IC")
-        g2 = QFormLayout(grp2)
-        g2.setHorizontalSpacing(16)
-        g2.setVerticalSpacing(16)
-        
-        btn_load = QPushButton("📂 Validasi File .nc Lokal / Unduhan")
-        btn_load.setObjectName("OutlineBtn")
-        btn_load.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_load = ModernButton("📂 Validasi File .nc Lokal / Unduhan", "outline")
         btn_load.clicked.connect(self.load_era5_file)
-        g2.addRow(btn_load)
+        grp2.add_widget(btn_load)
         
         # GRID EXTENT DASHBOARD
         self.grid_stats_frame = QFrame()
@@ -306,54 +241,45 @@ class Modul1ERA5(QWidget):
             self.bound_labels[key] = lbl_val
             g_stat_lay.addLayout(f)
             
-        g2.addRow(self.grid_stats_frame)
+        grp2.add_widget(self.grid_stats_frame)
         
-        btn_nc = QPushButton("⚡ Ekstrak IC (Hs, Tp, Dir) & Broadcast Auto-AOI")
-        btn_nc.setObjectName("PrimaryBtn")
-        btn_nc.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_nc = ModernButton("⚡ Ekstrak IC (Hs, Tp, Dir) & Broadcast Auto-AOI", "primary")
         btn_nc.clicked.connect(self.execute_era5_local)
-        g2.addRow(btn_nc)
+        grp2.add_widget(btn_nc)
         
         # Manual Overrides
+        g2 = QFormLayout()
         self.inp_man_hs = QLineEdit(); self.inp_man_hs.setPlaceholderText("Hs (m)")
         self.inp_man_tp = QLineEdit(); self.inp_man_tp.setPlaceholderText("Tp (s)")
         self.inp_man_dir = QLineEdit(); self.inp_man_dir.setPlaceholderText("Dir (°)")
         
         h_man = QHBoxLayout(); h_man.setSpacing(10)
         h_man.addWidget(self.inp_man_hs); h_man.addWidget(self.inp_man_tp); h_man.addWidget(self.inp_man_dir)
+        g2.addRow(QLabel("Input Manual:"), h_man)
         
-        g2.addRow(QLabel("Atau Injeksi Angka Manual:", styleSheet=LABEL_STYLE), h_man)
-        
-        btn_inj = QPushButton("Injeksi Manual (Tanpa .nc)")
-        btn_inj.setObjectName("DangerBtn")
-        btn_inj.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_inj = ModernButton("Injeksi Manual (Tanpa .nc)", "danger")
         btn_inj.clicked.connect(self.manual_override_wave)
         g2.addRow("", btn_inj)
-        
-        c2.addWidget(grp2)
+        grp2.add_layout(g2)
         
         # Terminal Sistem
         term_lbl = QLabel("Terminal Integrasi (System Log):")
         term_lbl.setStyleSheet("font-weight:900; color:#8FC9DC; font-size: 14px; margin-top: 10px;")
-        c2.addWidget(term_lbl)
+        grp2.add_widget(term_lbl)
         
         self.log_era5 = QTextEdit()
+        self.log_era5.setObjectName("TerminalOutput")
         self.log_era5.setReadOnly(True)
-        self.log_era5.setStyleSheet("background-color: #1E2128; color: #42E695; font-family: Consolas, monospace; font-size: 12px; border: 1px solid #3A3F4A; border-radius: 8px; padding: 12px;")
         self.log_era5.setMinimumHeight(100)
-        c2.addWidget(self.log_era5)
+        grp2.add_widget(self.log_era5)
         
-        ctrl.addLayout(c2, stretch=5)
+        bot_layout.addWidget(grp2, stretch=5)
         
-        scroll_layout.addLayout(ctrl)
-        scroll_layout.addStretch()
-        
-        scroll.setWidget(scroll_content)
-        bot_layout.addWidget(scroll)
         splitter.addWidget(bot_widget)
-        
         splitter.setSizes([450, 450])
-        main_layout.addWidget(splitter)
+        
+        self.scroll_base.add_widget(splitter)
+        main_layout.addWidget(self.scroll_base)
         
         # Sync Initial Time Boundary
         self._sync_time_to_state()
@@ -363,24 +289,20 @@ class Modul1ERA5(QWidget):
     # --------------------------------------------------------------------------
     
     def _sync_time_to_state(self):
-        """Sync Time Boundary for DIMR/Tidal execution"""
         app_state.update_multiple({
             'sim_start_time': self.dt_start.dateTime().toString(Qt.DateFormat.ISODate),
             'sim_end_time': self.dt_end.dateTime().toString(Qt.DateFormat.ISODate)
         })
 
     def on_bulk_state_changed(self) -> None:
-        """Triggered when update_multiple is called from StateManager."""
-        self.on_global_state_changed('Hs') # Trigger visual update
+        self.on_global_state_changed('Hs') 
 
     def on_global_state_changed(self, key: str) -> None:
-        """Dipanggil otomatis oleh Singleton StateManager."""
         if key in ['Hs', 'Tp', 'Dir']:
             self.inp_man_hs.setText(f"{app_state.get('Hs', 0):.2f}")
             self.inp_man_tp.setText(f"{app_state.get('Tp', 0):.2f}")
             self.inp_man_dir.setText(f"{app_state.get('Dir', 0):.2f}")
         elif key in ['sim_start_time', 'sim_end_time']:
-            # Prevent circular signals
             self.dt_start.blockSignals(True)
             self.dt_end.blockSignals(True)
             
@@ -394,7 +316,6 @@ class Modul1ERA5(QWidget):
             self.dt_end.blockSignals(False)
 
     def update_era5_bbox(self, data: dict) -> None:
-        """Menangkap input BBox Request dari user via Peta Leaflet."""
         self._syncing = True
         self.req_bounds = data 
         self.lbl_req_bbox.setText(f"Request: N{data['N']:.2f}, S{data['S']:.2f}, E{data['E']:.2f}, W{data['W']:.2f}")
@@ -457,9 +378,6 @@ class Modul1ERA5(QWidget):
         params = [item.data(Qt.ItemDataRole.UserRole) for item in selected_items]
         out_file = os.path.abspath(os.path.join(os.getcwd(), "Apex_Data_Exports", "ERA5_WAVE.nc"))
         
-        # [ENTERPRISE FIX]: Menyelesaikan Bug MARS Empty Area Crop
-        # Copernicus memerlukan minimal 1 piksel grid (0.25 derajat) untuk dapat diekstrak.
-        # Menambahkan buffer +0.5 derajat ke segala arah secara transparan di sistem latar.
         self.log_era5.append("■ Menginjeksikan buffer spasial 0.5° untuk mencegah MARS Server Empty Area Error...")
         buffered_bbox = {
             'N': bbox['N'] + 0.5,
