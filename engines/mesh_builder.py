@@ -33,7 +33,7 @@ class DepthProfileEngine:
     def calculate_doc_profile(bathy_file: str, transect_pts: list, doc_depth: float, epsg: str) -> str:
         """
         Kalkulasi 2D cross-section Depth of Closure menggunakan transek.
-        Aman terhadap memory leak Matplotlib dan benturan zonasi CRS (WGS84 vs UTM).
+        [ENTERPRISE FIX]: Dual-Panel Academic White Theme (Bird's Eye Map + 2D Profile).
         """
         if not os.path.exists(bathy_file):
             raise FileNotFoundError(f"Berkas batimetri tidak ditemukan: {bathy_file}")
@@ -47,16 +47,12 @@ class DepthProfileEngine:
             df = pd.read_csv(bathy_file, delim_whitespace=True, header=None, names=['x','y','z'], dtype=np.float64)
             tr = Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
             
-            # Transek dari Leaflet dipastikan berformat Lat/Lon (WGS84), konversi ke UTM
             px, py = tr.transform([p[0] for p in transect_pts], [p[1] for p in transect_pts])
             
-            # [ENTERPRISE FIX]: AI Detektor Sistem Koordinat Batimetri
-            # Jika x atau y bernilai di bawah 180 (derajat geografis), file Batimetri adalah WGS84
-            # Kita WAJIB merubahnya ke UTM sebelum digabungkan dengan garis transek.
             max_x = df['x'].abs().max()
             max_y = df['y'].abs().max()
             if max_x <= 180 and max_y <= 90:
-                logger.info("[DOC ENGINE] Batimetri terdeteksi berformat WGS84. Melakukan transformasi ke UTM otomatis...")
+                logger.info("[DOC ENGINE] Batimetri terdeteksi WGS84. Melakukan transformasi ke UTM otomatis...")
                 df['x'], df['y'] = tr.transform(df['x'].values, df['y'].values)
             else:
                 logger.info("[DOC ENGINE] Batimetri terdeteksi berformat UTM. Lanjut ke interpolasi.")
@@ -74,71 +70,81 @@ class DepthProfileEngine:
             zl = griddata((df['x'], df['y']), df['z'], (x_line, y_line), method='linear')
             if np.isnan(zl).any(): 
                 nan_mask = np.isnan(zl)
-                # Tambal dengan titik terdekat agar kurva solid dan tidak memicu ValueError Matplotlib
                 zl[nan_mask] = griddata((df['x'], df['y']), df['z'], (x_line[nan_mask], y_line[nan_mask]), method='nearest')
                 
             d_line = np.linspace(0, dists[-1], num_pts)
             
-            # [MENCARI TITIK SPASIAL DoC TEPAT DI PETA]
             idx_doc = np.where(zl <= doc_depth)[0]
             doc_found = len(idx_doc) > 0
             if doc_found:
-                doc_x_pt = x_line[idx_doc[0]]
-                doc_y_pt = y_line[idx_doc[0]]
+                doc_x_pt, doc_y_pt = x_line[idx_doc[0]], y_line[idx_doc[0]]
                 doc_dist = d_line[idx_doc[0]]
             
-            # 4. Rendering Visualization (DUAL VIEW)
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-            fig.patch.set_facecolor('#0B0F19')
+            # 4. Rendering Visualization (ACADEMIC WHITE THEME - DUAL PANEL)
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7))
+            fig.patch.set_facecolor('white')
             
             # ==========================================
             # PANEL 1: BIRD'S EYE VIEW (SPATIAL MAP)
             # ==========================================
-            ax1.set_facecolor('#030712')
+            ax1.set_facecolor('white')
             
-            plot_df = df if len(df) < 50000 else df.sample(50000)
-            sc = ax1.scatter(plot_df['x'], plot_df['y'], c=plot_df['z'], cmap='ocean', s=5, alpha=0.6)
+            # Agar RAM tidak meledak saat triangulasi matriks jutaan titik
+            plot_df = df if len(df) < 20000 else df.sample(20000)
             
-            ax1.plot(px, py, color='#EF4444', linewidth=2.5, linestyle='-', label='Garis Transek')
-            ax1.scatter(px[0], py[0], color='#10B981', marker='o', s=100, edgecolor='w', zorder=4, label='Start (Pesisir)')
+            try:
+                # Menggunakan tricontourf agar peta batimetri tampak bersambung (solid map)
+                levels = np.linspace(plot_df['z'].min(), plot_df['z'].max(), 20)
+                cf1 = ax1.tricontourf(plot_df['x'], plot_df['y'], plot_df['z'], levels=levels, cmap='terrain', alpha=0.85)
+                # Garis pinggir kontur tipis
+                ax1.tricontour(plot_df['x'], plot_df['y'], plot_df['z'], levels=levels, colors='black', linewidths=0.2, alpha=0.5)
+                
+                cb = plt.colorbar(cf1, ax=ax1, pad=0.02)
+                cb.set_label('Elevasi Dasar Laut (m)', color='black', fontweight='bold')
+                cb.ax.yaxis.set_tick_params(color='black')
+                plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color='black')
+            except Exception as e:
+                logger.warning(f"Triangulasi Batimetri gagal, fallback ke scatter: {e}")
+                sc = ax1.scatter(plot_df['x'], plot_df['y'], c=plot_df['z'], cmap='terrain', s=5, alpha=0.7)
+                cb = plt.colorbar(sc, ax=ax1, pad=0.02)
+                cb.set_label('Elevasi Dasar Laut (m)', color='black', fontweight='bold')
+
+            # Plot Line & Points
+            ax1.plot(px, py, color='red', linewidth=3.5, linestyle='-', label='Jalur Transek', zorder=3)
+            ax1.scatter(px[0], py[0], color='green', marker='o', s=150, edgecolor='black', zorder=4, label='Pesisir (Start)')
             
             if doc_found:
-                ax1.scatter(doc_x_pt, doc_y_pt, color='#F59E0B', marker='*', s=400, edgecolor='black', linewidth=1.5, zorder=5, label=f'Titik DoC ({doc_depth:.2f}m)')
+                ax1.scatter(doc_x_pt, doc_y_pt, color='orange', marker='*', s=550, edgecolor='black', linewidth=1.5, zorder=5, label=f'Titik DoC Aktual ({doc_depth:.2f}m)')
                 
-            ax1.set_title("Bird's Eye View: Pemetaan Spasial Transek & DoC", color='w', fontweight='bold', pad=15)
-            ax1.set_xlabel("Easting (UTM)", color='#94A3B8')
-            ax1.set_ylabel("Northing (UTM)", color='#94A3B8')
-            ax1.tick_params(colors='w')
-            ax1.grid(True, color='#1E293B', linestyle=':', alpha=0.7)
-            
-            cb = plt.colorbar(sc, ax=ax1)
-            cb.set_label('Elevasi (m)', color='w')
-            cb.ax.yaxis.set_tick_params(color='w')
-            plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color='w')
-            ax1.legend(facecolor='#020617', edgecolor='#1E293B', labelcolor='w', loc='lower right')
+            ax1.set_title("Bird's Eye View: Peta Batimetri & Posisi DoC", color='black', fontweight='bold', pad=15, fontsize=14)
+            ax1.set_xlabel("Easting (m)", color='black')
+            ax1.set_ylabel("Northing (m)", color='black')
+            ax1.tick_params(colors='black')
+            ax1.grid(True, color='gray', linestyle=':', alpha=0.5)
+            ax1.legend(facecolor='white', edgecolor='black', labelcolor='black', loc='lower right')
 
             # ==========================================
             # PANEL 2: 2D CROSS-SECTION PROFILE
             # ==========================================
-            ax2.set_facecolor('#0B0F19')
+            ax2.set_facecolor('white')
             
-            ax2.plot(d_line, zl, color='#38BDF8', linewidth=2.5, label='Profil Batimetri Transek')
-            ax2.axhline(doc_depth, color='#EF4444', linestyle='--', linewidth=2, label=f'Batas DoC ({doc_depth:.2f} m)')
-            ax2.axhline(0, color='#10B981', linestyle='-', linewidth=1.5, label='Rata-Rata Muka Air (0.0 m)')
+            ax2.plot(d_line, zl, color='blue', linewidth=2.5, label='Profil Batimetri Transek')
+            ax2.axhline(doc_depth, color='red', linestyle='--', linewidth=2, label=f'Limit DoC ({doc_depth:.2f} m)')
+            ax2.axhline(0, color='green', linestyle='-', linewidth=1.5, label='Rata-Rata Muka Air (0.0 m)')
             
             if doc_found:
-                ax2.scatter(doc_dist, doc_depth, color='#F59E0B', marker='*', s=300, edgecolor='black', zorder=5)
-                ax2.axvline(doc_dist, color='#F59E0B', linestyle=':', linewidth=1.5, alpha=0.8, label=f'Jarak DoC: {doc_dist:.1f} m')
+                ax2.scatter(doc_dist, doc_depth, color='orange', marker='*', s=450, edgecolor='black', zorder=5)
+                ax2.axvline(doc_dist, color='orange', linestyle=':', linewidth=1.5, alpha=0.8, label=f'Jarak Potong: {doc_dist:.1f} m')
             
-            ax2.fill_between(d_line, zl, -max(np.abs(zl))*1.5, color='#38BDF8', alpha=0.1)
-            ax2.fill_between(d_line, zl, doc_depth, where=(zl >= doc_depth) & (zl <= 0), color='#EF4444', alpha=0.25, label='Zona Transport Sedimen Aktif')
+            ax2.fill_between(d_line, zl, -max(np.abs(zl))*1.5, color='blue', alpha=0.1)
+            ax2.fill_between(d_line, zl, doc_depth, where=(zl >= doc_depth) & (zl <= 0), color='red', alpha=0.2, label='Zona Transport Sedimen Aktif')
             
-            ax2.set_title("2D Cross-Section: Profil Kedalaman vs Jarak Pantai", color='w', fontweight='bold', pad=15)
-            ax2.set_xlabel("Jarak Sepanjang Transek (meter)", color='#94A3B8')
-            ax2.set_ylabel("Elevasi Dasar Laut / Z (meter)", color='#94A3B8')
-            ax2.tick_params(colors='w')
-            ax2.grid(True, color='#1E293B', linestyle=':', alpha=0.7)
-            ax2.legend(facecolor='#020617', edgecolor='#1E293B', labelcolor='w')
+            ax2.set_title("2D Cross-Section: Profil Kedalaman vs Jarak", color='black', fontweight='bold', pad=15, fontsize=14)
+            ax2.set_xlabel("Jarak Sepanjang Transek dari Pesisir (m)", color='black')
+            ax2.set_ylabel("Elevasi Dasar Laut (m)", color='black')
+            ax2.tick_params(colors='black')
+            ax2.grid(True, color='gray', linestyle=':', alpha=0.5)
+            ax2.legend(facecolor='white', edgecolor='black', labelcolor='black', loc='lower left')
             
             # --- Export ---
             out_dir = os.path.abspath(os.path.join(os.getcwd(), 'Apex_Data_Exports'))
@@ -146,7 +152,7 @@ class DepthProfileEngine:
             plot_path = os.path.join(out_dir, "doc_panorama_analysis.png")
             
             plt.tight_layout()
-            plt.savefig(plot_path, dpi=150)
+            plt.savefig(plot_path, dpi=300) # Resolusi Tinggi Jurnal (300 DPI)
             
             return plot_path
             
@@ -164,17 +170,17 @@ class MeshBuilderEngine:
     def build_dimr_orchestration(params: dict, global_state: dict, progress_cb, log_cb, preview_cb) -> None:
         """
         Fungsi utama Orkestrator DIMR. 
-        Mendukung DECOUPLED BUILD: Hanya membuat D-Flow atau D-Waves atau Keduanya.
-        Diperkuat dengan sinkronisasi fisika, waktu simulasi, dan XML Coupler.
+        [ENTERPRISE FIX]: Memory leak guard & Time Isoformat Fallback.
         """
         if not HAS_DELTARES: 
             raise ImportError("Library dfm_tools, hydrolib-core, atau meshkernel tidak terinstal.")
             
         fig_preview = None
-        mesh2d = None  # Inisialisasi pengaman agar terhindar dari UnboundLocalError
+        mesh2d = None
+        mk_f = None
+        mk_w = None
         
         try:
-            # 1. Unpack Parameters & Time Sync Constraint
             b_mode = params.get('build_mode', 'coupled')
             epsg = str(params.get('epsg', '32749'))
             aoi_bounds = params['aoi_bounds']
@@ -183,20 +189,24 @@ class MeshBuilderEngine:
             ldb_file = params.get('ldb_file', '')
             out_dir = os.path.abspath(params['out_dir'])
             
-            # [ENTERPRISE TIME FIX]: Mencegah Time Domain Mismatch antar Modul
+            # [ENTERPRISE TIME FIX]: Fallback Parsing Waktu ISO
             t_start_iso = global_state.get('sim_start_time')
             t_end_iso = global_state.get('sim_end_time')
             if not t_start_iso or not t_end_iso:
                 raise ValueError("Waktu simulasi (sim_start_time / sim_end_time) belum diset dari Modul 1. DIMR akan Gagal.")
             
-            t_start = datetime.fromisoformat(t_start_iso)
-            t_end = datetime.fromisoformat(t_end_iso)
+            try:
+                # Menangani format '2025-09-01T00:00:00' atau sejenisnya
+                t_start = datetime.fromisoformat(t_start_iso.replace("Z", "+00:00"))
+                t_end = datetime.fromisoformat(t_end_iso.replace("Z", "+00:00"))
+            except Exception:
+                raise ValueError(f"Format waktu ISO tidak valid: {t_start_iso} atau {t_end_iso}")
+                
             sim_duration_sec = (t_end - t_start).total_seconds()
             
             os.makedirs(out_dir, exist_ok=True)
             progress_cb(10)
             
-            # 2. Koordinat Translasi (Untuk Makro dan Mikro)
             transformer = Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
             
             utm_E, utm_N = transformer.transform(aoi_bounds['E'], aoi_bounds['N'])
@@ -212,7 +222,7 @@ class MeshBuilderEngine:
             progress_cb(20)
 
             # =====================================================================
-            # TAHAP 1: D-FLOW FLEXIBLE MESH (Jika dipilih)
+            # TAHAP 1: D-FLOW FLEXIBLE MESH
             # =====================================================================
             if b_mode in ['dflow_only', 'coupled']:
                 log_cb("■ [D-FLOW] Merakit Flexible Mesh (Unstructured)...")
@@ -220,7 +230,6 @@ class MeshBuilderEngine:
                 max_res = float(params['max_res'])
                 min_res = float(params['min_res'])
                 
-                # Setup Base Grid D-FLOW
                 mk_f = MeshKernel()
                 make_grid_f = MakeGridParameters()
                 make_grid_f.origin_x, make_grid_f.origin_y = minx, miny
@@ -230,7 +239,6 @@ class MeshBuilderEngine:
                 mk_f.curvilinear_make_uniform(make_grid_f)
                 mk_f.curvilinear_convert_to_mesh2d()
                 
-                # Fraktal Refinement berdasarkan Inner BBox
                 poly_f = [(i_minx, i_miny), (i_maxx, i_miny), (i_maxx, i_maxy), (i_minx, i_maxy), (i_minx, i_miny)]
                 geom_f = GeometryList(
                     x_coordinates=np.array([c[0] for c in poly_f], dtype=np.double), 
@@ -248,7 +256,6 @@ class MeshBuilderEngine:
                     )
                     mk_f.mesh2d_refine_based_on_polygon(geom_f, ref_f)
                 
-                # Land Boundary Clipping (D-FLOW Only)
                 if params.get('clip_landward', True) and ldb_file and os.path.exists(ldb_file):
                     log_cb("  ├ Menyuntikkan Land Boundary Clipping (.ldb)...")
                     try:
@@ -268,7 +275,6 @@ class MeshBuilderEngine:
                 file_nc_f = os.path.join(out_dir, "Flow_Mesh.nc")
                 mk_f.mesh2d_write_netcdf(file_nc_f)
                 
-                # Konfigurasi Fisika D-FLOW MDU
                 ext = ExtModel()
                 ext.boundary.append(Boundary(quantity="bedlevel", locationfile=os.path.basename(bathy_file), forcingfile="", interpolatingmethod="nearest"))
                 
@@ -289,8 +295,6 @@ class MeshBuilderEngine:
                     
                 tide_bc_file = params.get('tide_bc', '')
                 if tide_bc_file and os.path.exists(tide_bc_file):
-                    
-                    # Sinkronisasi Boundary Name
                     target_bnd_name = f"{bnd_dir}_Ocean_Boundary"
                     try:
                         with open(tide_bc_file, 'r', encoding='utf-8') as f:
@@ -300,12 +304,12 @@ class MeshBuilderEngine:
                             f.write(bc_data)
                         log_cb(f"  ├ [✓] Sinkronisasi nama Boundary (.bc) ke: {target_bnd_name}")
                     except Exception as e:
-                        logger.warning(f"Gagal menyinkronkan nama boundary di dalam file .bc: {e}")
+                        logger.warning(f"Gagal menyinkronkan nama boundary .bc: {e}")
 
-                    qty_type = "neumannbnd" if params.get('use_riemann', True) else "waterlevelbnd"
-                    if qty_type == "neumannbnd": log_cb("  ├ [✓] Riemann Boundary Aktif (Anti-Reflection).")
-                    
-                    ext.boundary.append(Boundary(quantity=qty_type, locationfile=pli_file, forcingfile=os.path.basename(tide_bc_file)))
+                qty_type = "neumannbnd" if params.get('use_riemann', True) else "waterlevelbnd"
+                if qty_type == "neumannbnd": log_cb("  ├ [✓] Riemann Boundary Aktif (Anti-Reflection).")
+                
+                ext.boundary.append(Boundary(quantity=qty_type, locationfile=pli_file, forcingfile=os.path.basename(tide_bc_file)))
                 
                 ext_filepath = os.path.join(out_dir, "apex_forcing.ext")
                 ext.filepath = ext_filepath
@@ -315,18 +319,15 @@ class MeshBuilderEngine:
                 fm.geometry.netfile = "Flow_Mesh.nc"
                 if tide_bc_file or sediment_file: fm.external_forcing.extforcefilenew = "apex_forcing.ext"
                 
-                # [THESIS PHYSICS ALIGNMENT]: Friction Type untuk Mangrove
                 fm.physics.dicoww = 0.1 
                 if not sediment_file: 
                     fm.physics.unifrictcoef = 0.023 
                 else: 
                     fm.physics.unifrictcoef = 0.0
-                    # Tipe 3 adalah Nikuradse, sangat penting karena Modul 2 melakukan D50 -> Nikuradse.
                     fm.physics.frictyp = 3  
                     log_cb("  ├ [✓] Memaksa Physics `frictyp=3` (Nikuradse) untuk Mangrove Drag Force.")
                     
                 fm.numerics.cflmax = 0.7
-                
                 fm.time.refdate = int(t_start.strftime("%Y%m%d"))
                 fm.time.tstop = sim_duration_sec 
                 
@@ -339,7 +340,7 @@ class MeshBuilderEngine:
             progress_cb(50)
 
             # =====================================================================
-            # TAHAP 2: D-WAVES RECTILINEAR GRID (Jika dipilih)
+            # TAHAP 2: D-WAVES RECTILINEAR GRID
             # =====================================================================
             if b_mode in ['dwaves_only', 'coupled']:
                 log_cb("■ [D-WAVES] Merakit Rectilinear Nested Grid (SWAN Structured)...")
@@ -396,13 +397,12 @@ class MeshBuilderEngine:
             progress_cb(80)
 
             # =====================================================================
-            # TAHAP 3: DIMR XML COUPLER (Dinamis Two-Way Interaction)
+            # TAHAP 3: DIMR XML COUPLER
             # =====================================================================
             if b_mode == 'coupled':
                 log_cb("■ [COUPLING] Merakit DIMR XML Coupler Dua-Arah (Flow <-> Wave)...")
                 dimr_path = os.path.join(out_dir, "dimr_config.xml")
                 
-                # Interval Coupling: 1800 detik (Setengah jam) untuk kestabilan pasang surut
                 xml_content = f"""<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <dimrConfig xmlns="http://schemas.deltares.nl/dimr" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.deltares.nl/dimr http://content.oss.deltares.nl/schemas/dimr-1.3.xsd">
   <control>
@@ -448,14 +448,15 @@ class MeshBuilderEngine:
             # --- PLOT RENDERING ---
             if mesh2d is not None:
                 fig_preview, ax = plt.subplots(figsize=(8, 6))
-                ax.set_facecolor('#1E2128')
-                fig_preview.patch.set_facecolor('#1E2128')
-                color_dot = '#00D2FF' if b_mode != 'dwaves_only' else '#595FF7'
+                ax.set_facecolor('white')
+                fig_preview.patch.set_facecolor('white')
+                color_dot = 'blue' if b_mode != 'dwaves_only' else 'red'
                 title_txt = "Generated Flexible Mesh Topology (D-FLOW)" if b_mode != 'dwaves_only' else "Generated Rectilinear Topology (D-WAVES)"
                 
-                ax.plot(mesh2d.node_x, mesh2d.node_y, '.', color=color_dot, markersize=0.8, alpha=0.6)
-                ax.set_title(title_txt, color='white', fontsize=12, fontweight='bold')
-                ax.tick_params(colors='#64748B')
+                ax.plot(mesh2d.node_x, mesh2d.node_y, '.', color=color_dot, markersize=0.8, alpha=0.8)
+                ax.set_title(title_txt, color='black', fontsize=12, fontweight='bold')
+                ax.tick_params(colors='black')
+                ax.grid(True, color='gray', linestyle=':', alpha=0.3)
                 
                 preview_path = os.path.join(out_dir, "Mesh_Topology_Preview.png")
                 plt.tight_layout()
@@ -475,3 +476,7 @@ class MeshBuilderEngine:
             if fig_preview is not None:
                 fig_preview.clf()
                 plt.close(fig_preview)
+            del mk_f
+            del mk_w
+            import gc
+            gc.collect()
