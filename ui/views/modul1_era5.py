@@ -209,6 +209,8 @@ class Modul1ERA5(QWidget):
         grp0.add_layout(g0)
         
         self.btn_dl_era5 = ModernButton("↓ Mulai Unduh dari Server Copernicus (.nc)", "primary")
+        self.btn_dl_era5.setAccessibleName("Mulai Unduh dari Server Copernicus (.nc)")
+        self.btn_dl_era5.setToolTip("Mengunduh data metocean dari server Copernicus CDS sesuai parameter yang dipilih.")
         self.btn_dl_era5.clicked.connect(self.run_era5_downloader)
         grp0.add_widget(self.btn_dl_era5)
         
@@ -218,6 +220,8 @@ class Modul1ERA5(QWidget):
         grp2 = CardWidget("2. Macro-Boundary (Auto-AOI) & Ekstraksi IC")
         
         btn_load = ModernButton("📂 Validasi File .nc Lokal / Unduhan", "outline")
+        btn_load.setAccessibleName("Validasi File .nc Lokal / Unduhan")
+        btn_load.setToolTip("Memuat dan memvalidasi file data ERA5 lokal (.nc) untuk diekstrak.")
         btn_load.clicked.connect(self.load_era5_file)
         grp2.add_widget(btn_load)
         
@@ -244,6 +248,8 @@ class Modul1ERA5(QWidget):
         grp2.add_widget(self.grid_stats_frame)
         
         btn_nc = ModernButton("⚡ Ekstrak IC (Hs, Tp, Dir) & Broadcast Auto-AOI", "primary")
+        btn_nc.setAccessibleName("Ekstrak IC (Hs, Tp, Dir) & Broadcast Auto-AOI")
+        btn_nc.setToolTip("Mengekstrak parameter gelombang untuk Kondisi Awal dan menyesuaikan batas area otomatis.")
         btn_nc.clicked.connect(self.execute_era5_local)
         grp2.add_widget(btn_nc)
         
@@ -258,6 +264,8 @@ class Modul1ERA5(QWidget):
         g2.addRow(QLabel("Input Manual:"), h_man)
         
         btn_inj = ModernButton("Injeksi Manual (Tanpa .nc)", "danger")
+        btn_inj.setAccessibleName("Injeksi Manual (Tanpa .nc)")
+        btn_inj.setToolTip("Gunakan nilai yang diketik manual di atas sebagai Initial Condition, mengabaikan file .nc.")
         btn_inj.clicked.connect(self.manual_override_wave)
         g2.addRow("", btn_inj)
         grp2.add_layout(g2)
