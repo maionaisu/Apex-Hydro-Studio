@@ -178,10 +178,12 @@ class PostProcEngine:
                 else:
                     raise KeyError("Geometri mesh tidak terdeteksi untuk ekstraksi titik.")
                 
-                # Nearest Neighbor Extraction menggunakan Hipotenusa
-                dists = np.hypot(ux - target_x, uy - target_y)
-                min_idx = np.nanargmin(dists)
-                closest_dist = dists[min_idx]
+                # ⚡ Bolt Optimization: Nearest Neighbor Extraction
+                # Avoid O(N) np.hypot square root calculations by comparing squared distances.
+                # Square root is only applied once to the minimum value found.
+                sq_dists = (ux - target_x)**2 + (uy - target_y)**2
+                min_idx = np.nanargmin(sq_dists)
+                closest_dist = np.sqrt(sq_dists[min_idx])
                 
                 logger.info(f"[VALIDATION] Titik terdekat ditemukan pada jarak {closest_dist:.2f} meter dari koordinat input.")
                 
