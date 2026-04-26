@@ -2,6 +2,7 @@
 # APEX NEXUS TIER-0: MESH & DIMR ORCHESTRATION WORKER (QThread)
 # ==============================================================================
 import os
+import copy
 import logging
 import traceback
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -22,7 +23,8 @@ class DepthOfClosure2DWorker(QThread):
     def __init__(self, bathy_file, transect_pts, he, epsg):
         super().__init__()
         self.bathy_file = bathy_file
-        self.transect_pts = transect_pts
+        # Strict copy to avoid UI thread race condition
+        self.transect_pts = copy.deepcopy(transect_pts) if transect_pts else []
         self.he = he
         self.epsg = epsg
 
@@ -30,36 +32,28 @@ class DepthOfClosure2DWorker(QThread):
         try:
             self.log_signal.emit("■ Mengkalkulasi 2D Cross-Section Morphodynamics & DoC...")
             
-            # Memastikan cast ke float agar tidak terjadi TypeError jika UI mengirim string
             he_val = float(self.he)
             doc_depth = -1.57 * he_val
             
             self.log_signal.emit(f"  ├ Limit DoC (Hallermeier/Birkemeier): {doc_depth:.2f} m")
             
-            # Panggilan ke engine fisika Tier-0
             plot_path = DepthProfileEngine.calculate_doc_profile(
                 self.bathy_file, self.transect_pts, doc_depth, self.epsg
             )
             
             logger.info("[MESH WORKER] 2D Cross-Section berhasil digenerate.")
-            self.log_signal.emit("✅ Render 2D Cross Section Selesai.")
+            self.log_signal.emit("✅ Render 2D Cross Section Selesai (Academic Theme).")
             
-            # Transmisi hasil ke Main UI Thread
             self.plot_signal.emit(plot_path)
             self.doc_val_signal.emit(abs(doc_depth))
             self.finished_signal.emit(True)
             
-            # Opsional: Paksa pengumpulan memori sampah yang tertahan oleh figure Matplotlib
-            import gc
-            gc.collect()
-            
         except Exception as e:
-            # Memisahkan UI log dengan System log untuk kemudahan debugging
             error_details = f"{str(e)}\n{traceback.format_exc()}"
             logger.error(f"[FATAL] DoC Worker Error: {error_details}")
             
             self.log_signal.emit(f"❌ Error Kalkulasi DoC: {str(e)}")
-            self.plot_signal.emit("") # Kirim sinyal kosong agar UI tidak hang menunggu gambar
+            self.plot_signal.emit("")
             self.finished_signal.emit(False)
 
 
@@ -67,7 +61,7 @@ class ApexDIMROrchestratorWorker(QThread):
     """
     [TIER-0] The Master Background Worker.
     Orchestrates MeshKernel Adaptive Refinement, Delft3D-FM, and SWAN coupling operations.
-    Telah di-sinkronisasikan secara absolut dengan DECOUPLED BUILD MODE di Engine.
+    Safe state dict isolation.
     """
     log_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(int)
@@ -76,12 +70,12 @@ class ApexDIMROrchestratorWorker(QThread):
 
     def __init__(self, params: dict, global_state: dict):
         super().__init__()
-        self.params = params
-        self.state = global_state 
+        # Isolated references
+        self.params = copy.deepcopy(params) if params else {}
+        self.state = copy.deepcopy(global_state) if global_state else {}
 
     def run(self) -> None:
         try:
-            # Sinkronisasi Pesan UI Berdasarkan Mode yang Dipilih
             b_mode = self.params.get('build_mode', 'coupled')
             
             if b_mode == 'dflow_only':
@@ -91,7 +85,7 @@ class ApexDIMROrchestratorWorker(QThread):
             else:
                 self.log_signal.emit("■ Inisiasi Pipeline MeshKernel (Full Coupling DIMR)...")
             
-            # Eksekusi Master Orchestrator (Aman dari pembekuan GUI)
+            # Panggilan aman ke Engine
             MeshBuilderEngine.build_dimr_orchestration(
                 params=self.params,
                 global_state=self.state,
@@ -100,7 +94,6 @@ class ApexDIMROrchestratorWorker(QThread):
                 preview_cb=self.preview_signal.emit
             )
             
-            # Pelaporan Status Akhir yang Akurat
             if b_mode == 'dflow_only':
                 msg = "Arsitektur D-FLOW (MDU & Ext) berhasil dirakit."
             elif b_mode == 'dwaves_only':
@@ -117,7 +110,6 @@ class ApexDIMROrchestratorWorker(QThread):
             self.finished_signal.emit("Error", False)
             
         except Exception as e:
-            # Traceback panjang disimpan di logger, sementara UI menerima inti pesan
             error_details = f"{str(e)}\n{traceback.format_exc()}"
             logger.error(f"[FATAL] DIMR Orchestrator Gagal: {error_details}")
             
