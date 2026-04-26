@@ -216,7 +216,7 @@ class Modul2Sediment(QWidget):
         scroll_area.add_widget(grp2)
         
         # 4. Execution Button
-        btn_run = ModernButton("⚡ Eksekusi Matriks & Generate Contours", "primary")
+        btn_run = ModernButton("⚡ Generate Contours", "primary")
         btn_run.clicked.connect(lambda checked, m=mode_type: self.run_interpolation(m))
         scroll_area.add_widget(btn_run)
         
@@ -378,7 +378,7 @@ class Modul2Sediment(QWidget):
         
         def on_finished(xyz_path: str):
             btn_run.setEnabled(True)
-            btn_run.setText("⚡ Eksekusi Matriks & Generate Contours")
+            btn_run.setText("⚡ Generate Contours")
             
             if xyz_path and os.path.exists(xyz_path):
                 app_state.update('sediment_xyz', xyz_path)
