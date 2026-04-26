@@ -22,33 +22,27 @@ class _NumpyEncoder(json.JSONEncoder):
 class StateManager(QObject):
     """
     [TIER-0 OMNI-STATE STORE]
-    Thread-safe Global Memory Manager with True Singleton Enforcement, 
-    Strict Schema Guards, Smart Copying, and Atomic I/O Operations.
+    Thread-safe Global Memory Manager.
+    Menggunakan pola 'Module-Level Singleton' dengan pengaman PyQt6 asli.
     """
     _instance = None
-    _init_lock = QMutex()
-
+    
     state_updated = pyqtSignal(str) 
     bulk_state_updated = pyqtSignal()
 
-    def __new__(cls):
-        # [ENTERPRISE FIX 1]: True Singleton Enforcement
-        # Mencegah instansiasi ganda secara absolut di seluruh thread
-        with QMutexLocker(cls._init_lock):
-            if cls._instance is None:
-                cls._instance = super(StateManager, cls).__new__(cls)
-        return cls._instance
-
     def __init__(self):
-        # Mencegah reset memori jika __init__ terpanggil berulang kali
-        if hasattr(self, '_initialized') and self._initialized:
-            return
+        # [ENTERPRISE FIX]: PyQt Safe Singleton Guard
+        # Alih-alih memanipulasi __new__ (yang dibenci oleh PyQt C++ Engine),
+        # Kita melarang keras instansiasi ganda langsung dari akar __init__.
+        if StateManager._instance is not None:
+            raise RuntimeError("[FATAL] StateManager adalah Singleton! Gunakan 'from core.state_manager import app_state'")
             
         super().__init__()
+        StateManager._instance = self
+        
         self._mutex = QMutex()
         
-        # [ENTERPRISE FIX 2]: STRICT SCHEMA GUARD
-        # Daftar putih (Whitelist) parameter absolut yang diizinkan beredar di RAM
+        # STRICT SCHEMA GUARD: Whitelist parameter absolut di RAM
         self._schema_keys = {
             'He', 'Hs', 'Tp', 'Dir', 'DoC',
             'sim_start_time', 'sim_end_time',
@@ -66,14 +60,9 @@ class StateManager(QObject):
             'veg_height_hv': 2.0, 'veg_density_n': 20.0, 'veg_stem_diameter_m': 0.15, 'veg_drag_cd': 1.5,
             'dimr_path': "", 'workspace_dir': "", 'compute_backend': "CPU"
         }
-        self._initialized = True
 
     def _safe_copy(self, val: Any) -> Any:
-        """
-        [ENTERPRISE FIX 3]: Smart Copying. 
-        Tipe data primitif (int/float/str) tidak butuh deepcopy. 
-        Menghemat komputasi CPU yang sangat signifikan saat loop berjalan.
-        """
+        """Smart Copying: Hemat CPU cycle dengan menghindari deepcopy pada tipe primitif."""
         if isinstance(val, (int, float, str, bool, type(None))):
             return val
         return copy.deepcopy(val)
@@ -81,12 +70,11 @@ class StateManager(QObject):
     def update(self, key: str, value: Any) -> None:
         """O(1) Mutex-locked state mutation dengan Schema Guard."""
         if key not in self._schema_keys:
-            logger.warning(f"[STATE GUARD] Percobaan injeksi key tidak dikenal ('{key}') digagalkan. Mencegah Silent Bug.")
+            logger.warning(f"[STATE GUARD] Injeksi key tidak dikenal ('{key}') digagalkan.")
             return
             
         with QMutexLocker(self._mutex):
             self._state[key] = self._safe_copy(value)
-        
         self.state_updated.emit(key)
 
     def update_multiple(self, dictionary: Dict[str, Any]) -> None:
@@ -106,8 +94,7 @@ class StateManager(QObject):
     def get(self, key: str, default: Any = None) -> Any:
         """O(1) Mutex-locked safe retrieval. Menjamin isolasi pointer memori."""
         with QMutexLocker(self._mutex):
-            val = self._state.get(key, default)
-            return self._safe_copy(val)
+            return self._safe_copy(self._state.get(key, default))
 
     def get_all(self) -> Dict[str, Any]:
         """Snapshot State utuh."""
@@ -115,19 +102,14 @@ class StateManager(QObject):
             return copy.deepcopy(self._state)
 
     def export_session(self, filepath: str) -> bool:
-        """
-        [ENTERPRISE FIX 4]: ATOMIC I/O OPERATION.
-        Mencegah korupsi data permanen jika aplikasi/OS crash tepat saat operasi `write` berlangsung.
-        """
+        """ATOMIC I/O OPERATION. Mencegah korupsi data jika OS crash saat Write."""
         try:
             state_snapshot = self.get_all()
             temp_path = f"{filepath}.tmp"
             
-            # Tulis ke file temporer terlebih dahulu
             with open(temp_path, 'w', encoding='utf-8') as f:
                 json.dump(state_snapshot, f, indent=4, cls=_NumpyEncoder)
                 
-            # Gantikan (replace) file asli seketika. Operasi OS atomik.
             os.replace(temp_path, filepath) 
             logger.info(f"[IO] Sesi riset Apex berhasil diamankan ke: {filepath}")
             return True
@@ -135,7 +117,8 @@ class StateManager(QObject):
         except Exception as e:
             logger.error(f"[FATAL] Gagal mengekspor sesi -> {str(e)}")
             if 'temp_path' in locals() and os.path.exists(temp_path):
-                os.remove(temp_path) # Cleanup sampah I/O
+                try: os.remove(temp_path)
+                except Exception: pass
             return False
 
     def import_session(self, filepath: str) -> bool:
@@ -153,5 +136,5 @@ class StateManager(QObject):
             logger.error(f"[FATAL] Gagal memulihkan sesi -> {str(e)}")
             return False
 
-# Global Singleton Instance mapping
+# Murni Module-Level Singleton. Instansiasi ini hanya dieksekusi 1 kali seumur hidup aplikasi.
 app_state = StateManager()
