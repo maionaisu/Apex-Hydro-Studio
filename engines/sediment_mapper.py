@@ -22,6 +22,7 @@ class SpatialSedimentEngine:
     Upgrades:
     - Filled Contours (S2/S3 Thesis Standard Plotting).
     - Shapely Ray-Casting Masking (Clipping Grid with Shapefiles).
+    - Strict CRS Synchronization between Grid and Polygons.
     """
     @staticmethod
     def process_and_interpolate(df: pd.DataFrame, col_x: str, col_y: str, col_val: str, epsg: str, mode_type: str, apply_ks: bool = False, interp_method: str = "Delaunay", boundary_file: str = None, log_cb=None) -> tuple:
@@ -127,8 +128,12 @@ class SpatialSedimentEngine:
                     nan_mask = np.isnan(gz)
                     gz[nan_mask] = griddata(np.column_stack((ux, uy)), vals, (gx[nan_mask], gy[nan_mask]), method='nearest')
 
+            # [ENTERPRISE FIX]: Mencegah Kriging Wild Extrapolation (Membatasi grid agar tidak lebih ekstrim dari data asli)
+            _log("  ├ Membatasi (clamping) nilai grid ekstrem...")
+            gz = np.clip(gz, np.min(vals), np.max(vals))
+
             # ==============================================================================
-            # [ENTERPRISE FEATURE]: SPATIAL CLIPPING / MASKING WITH GEOPANDAS & SHAPELY
+            # [ENTERPRISE FEATURE]: STRICT CRS SPATIAL CLIPPING / MASKING
             # ==============================================================================
             gdf_bnd = None
             if boundary_file and os.path.exists(boundary_file):
@@ -137,12 +142,20 @@ class SpatialSedimentEngine:
                     from shapely.prepared import prep
                     from shapely.geometry import Point
                     
-                    _log(f"  ├ [MASKING] Memotong grid menggunakan batas poligon: {os.path.basename(boundary_file)}")
+                    _log(f"  ├ [MASKING] Memuat poligon batas: {os.path.basename(boundary_file)}")
                     gdf_bnd = gpd.read_file(boundary_file)
                     
-                    if gdf_bnd.crs is None or gdf_bnd.crs.to_epsg() != int(epsg):
-                        _log(f"  ├ [CRS SYNC] Menyesuaikan proyeksi Polygon ke EPSG:{epsg}...")
-                        gdf_bnd = gdf_bnd.to_crs(epsg=int(epsg))
+                    # [STRICT CRS SYNC FIX]: Mencegah perbedaan posisi antara Polygon & Sedimen
+                    if gdf_bnd.crs is None:
+                        _log("  ├ [CRS WARNING] Poligon tidak memiliki CRS. Sistem berasumsi WGS84 (EPSG:4326).")
+                        gdf_bnd = gdf_bnd.set_crs(epsg=4326)
+                        
+                    target_epsg = int(epsg)
+                    current_epsg = gdf_bnd.crs.to_epsg()
+                    
+                    if current_epsg != target_epsg:
+                        _log(f"  ├ [CRS SYNC] Transformasi CRS Poligon (EPSG:{current_epsg}) ke area sedimen (EPSG:{target_epsg})...")
+                        gdf_bnd = gdf_bnd.to_crs(epsg=target_epsg)
                         
                     # Menggabungkan seluruh poligon menjadi satu kesatuan (Unary Union)
                     polygon_union = gdf_bnd.geometry.unary_union
@@ -150,16 +163,15 @@ class SpatialSedimentEngine:
                     # Optimalisasi Ray-Casting Point-in-Polygon (C++)
                     prepared_polygon = prep(polygon_union)
                     
-                    _log("  ├ Mengeksekusi algoritma Ray-Casting untuk memfilter jutaan titik...")
-                    # Flattening & vektorisasi (Dapat memakan waktu 2-10 detik tergantung resolusi)
+                    _log("  ├ Mengeksekusi algoritma Ray-Casting untuk memfilter koordinat grid...")
                     pts = np.column_stack((gx.flatten(), gy.flatten()))
                     mask = np.array([prepared_polygon.contains(Point(x, y)) for x, y in pts])
                     
-                    # Membuang (NaN-kan) nilai Z yang jatuh di luar lautan / AOI
+                    # Membuang (NaN-kan) nilai Z yang jatuh di luar batas poligon AOI
                     gz_flat = gz.flatten()
                     gz_flat[~mask] = np.nan
                     gz = gz_flat.reshape(gz.shape)
-                    _log("  ├ [MASKING SUCCESS] Pesisir/Daratan telah di-clipping secara geometris.")
+                    _log("  ├ [MASKING SUCCESS] Kontur daratan berhasil disesuaikan dan dipotong.")
                     
                 except ImportError:
                     _log("  ├ [WARNING] Pustaka 'geopandas' atau 'shapely' tidak ditemukan. Masking dibatalkan.")
@@ -173,61 +185,62 @@ class SpatialSedimentEngine:
             filename_prefix = {'sediment': "Sed_Rough", 'mangrove': "Mangrove_Fric", 'submerged': "Sub_Eco"}.get(mode_type, 'Spatial_Data')
             out_xyz = os.path.join(out_dir, f"{filename_prefix}.xyz")
             
-            _log(f"  ├ Menulis matriks (XYZ) bersih -> {os.path.basename(out_xyz)}")
+            _log(f"  ├ Menulis matriks spasial .xyz bersih ke penyimpanan...")
             df_export = pd.DataFrame({'X': gx.flatten(), 'Y': gy.flatten(), 'Z': gz.flatten()})
+            # Dropna memastikan titik daratan (NaN) tidak ikut membebani Delft3D
             df_export.dropna().to_csv(out_xyz, sep=' ', header=False, index=False, float_format='%.3f')
             del df_export; gc.collect()
             
             # ==============================================================================
             # [ENTERPRISE FEATURE]: FILLED CONTOURS (S2/S3 THESIS LEVEL AESTHETICS)
             # ==============================================================================
-            _log("  ├ Merender Spasial Filled Contours HD...")
+            _log("  ├ Merender HD Filled Contours (White Academic Theme)...")
             p_path = os.path.join(out_dir, f"{mode_type}_contours.png")
             
             try:
-                fig, ax = plt.subplots(figsize=(7, 6))
-                fig.patch.set_facecolor('#0B0F19')
-                ax.set_facecolor('#030712')
+                fig, ax = plt.subplots(figsize=(8, 6))
+                fig.patch.set_facecolor('white')
+                ax.set_facecolor('white')
                 
-                cmap_choice, label_text, title_text = 'YlOrBr_r', 'Friction (ks)', 'Distribusi Sedimen Dasar Laut'
+                cmap_choice, label_text, title_text = 'YlOrBr', 'Friction (ks)', 'Distribusi Sedimen Dasar Laut'
                 if mode_type == 'mangrove':
                     cmap_choice, label_text, title_text = 'Greens', 'Densitas (n/m2)', 'Distribusi Vegetasi Mangrove'
                 elif mode_type == 'submerged':
                     cmap_choice, label_text, title_text = 'GnBu', 'Densitas (n/m2)', 'Distribusi Submerged Vegetation'
                     
-                # Menentukan interval garis kontur agar terlihat elegan
                 valid_z = gz[~np.isnan(gz)]
                 if len(valid_z) > 0:
-                    levels = np.linspace(np.min(valid_z), np.max(valid_z), 15)
+                    min_z, max_z = np.min(valid_z), np.max(valid_z)
+                    if min_z == max_z: max_z = min_z + 0.1 # Failsafe untuk nilai tunggal konstan
+                    
+                    levels = np.linspace(min_z, max_z, 15)
                     # 1. Gambar Area Kontur Berwarna
-                    cf = ax.contourf(gx, gy, gz, levels=levels, cmap=cmap_choice, extend='both', alpha=0.9)
-                    # 2. Gambar Garis Kontur Pemisah
-                    ax.contour(gx, gy, gz, levels=levels, colors='black', linewidths=0.3, alpha=0.5)
+                    cf = ax.contourf(gx, gy, gz, levels=levels, cmap=cmap_choice, extend='both', alpha=0.85)
+                    # 2. Gambar Garis Kontur Pemisah (Hitam)
+                    ax.contour(gx, gy, gz, levels=levels, colors='black', linewidths=0.5, alpha=0.7)
                     
                     cb = plt.colorbar(cf, ax=ax, pad=0.02)
-                    cb.set_label(label_text, color='w', fontweight='bold')
-                    cb.ax.yaxis.set_tick_params(color='w')
-                    plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color='w')
+                    cb.set_label(label_text, color='black', fontweight='bold')
+                    cb.ax.yaxis.set_tick_params(color='black')
+                    plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color='black')
                 
-                # 3. Plot Land Boundary / Shapefile Overlay (Jika ada) untuk visual referensi daratan
+                # 3. Plot Land Boundary / Shapefile Overlay (Jika ada)
                 if gdf_bnd is not None:
-                    # Gambar outline poligon dengan garis emas/kuning agar terlihat batasnya
-                    gdf_bnd.boundary.plot(ax=ax, color='#F59E0B', linewidth=1.5, zorder=4)
+                    gdf_bnd.boundary.plot(ax=ax, color='black', linewidth=1.5, zorder=4, label='Batas Poligon')
                 
                 # 4. Plot Titik Survei
-                ax.scatter(ux, uy, c='#EF4444', s=15, edgecolors='white', linewidths=0.5, label='Titik Survei', zorder=5)
+                ax.scatter(ux, uy, c='red', s=15, edgecolors='black', linewidths=0.5, label='Titik Survei', zorder=5)
                 
-                ax.set_title(title_text, color='w', fontweight='bold', pad=15, fontsize=14)
-                ax.tick_params(colors='w')
-                ax.grid(True, color='#1E293B', linestyle=':', alpha=0.7)
+                ax.set_title(title_text, color='black', fontweight='bold', pad=15, fontsize=14)
+                ax.tick_params(colors='black')
+                ax.grid(True, color='gray', linestyle=':', alpha=0.4)
                 
-                # Tweak layout
-                ax.set_xlabel("Easting (m)", color='w')
-                ax.set_ylabel("Northing (m)", color='w')
-                ax.legend(facecolor='#020617', edgecolor='#1E293B', labelcolor='w', loc='upper right')
+                ax.set_xlabel("Easting (m)", color='black')
+                ax.set_ylabel("Northing (m)", color='black')
+                ax.legend(facecolor='white', edgecolor='black', labelcolor='black', loc='upper right')
                 
                 plt.tight_layout()
-                plt.savefig(p_path, dpi=300) # Output resolusi sangat tinggi (300 DPI) untuk skripsi
+                plt.savefig(p_path, dpi=300) 
                 
             finally:
                 if fig is not None:
