@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QSizePolicy, QScrollArea
 )
-from PyQt6.QtCore import Qt, QRect, QRectF, QPoint
+from PyQt6.QtCore import Qt, QRect, QRectF, QPoint, QEvent
 from PyQt6.QtGui import QPainter, QPainterPath, QColor, QPen
 
 logger = logging.getLogger(__name__)
@@ -30,15 +30,15 @@ class FlexScrollArea(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setStyleSheet("background: transparent; border: none;")
         
-        # Inner Flex-Column Container
         self.container = QWidget()
         self.container.setObjectName("ScrollContainer")
+        self.container.setStyleSheet("background: transparent;")
         
         self.flex_layout = QVBoxLayout(self.container)
-        # padding: 20px 24px (Top, Right, Bottom, Left)
-        self.flex_layout.setContentsMargins(24, 24, 24, 24)
-        self.flex_layout.setSpacing(20) # gap: 20px
+        self.flex_layout.setContentsMargins(16, 16, 16, 16)
+        self.flex_layout.setSpacing(16)
         self.flex_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         self.setWidget(self.container)
@@ -54,14 +54,14 @@ class FlexScrollArea(QScrollArea):
 
 class CardWidget(QFrame):
     """
-    [TIER-0] Standardized Dashboard Card.
-    Hooks automatically to QWidget#CardWidget in theme.qss.
-    Acts as a CSS flex-column with built-in padding and gap.
+    [TIER-0] Standardized Dashboard Card. 
+    Acts as a CSS flex-column with safe layout constraints.
     """
     def __init__(self, title: str = "", parent=None):
         super().__init__(parent)
         self.setObjectName("CardWidget")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.setStyleSheet("QFrame#CardWidget { background-color: #2D3139; border: 1px solid #3A3F4A; border-radius: 12px; }")
         
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(20, 20, 20, 20)
@@ -69,7 +69,7 @@ class CardWidget(QFrame):
         
         if title:
             self.lbl_title = QLabel(title)
-            self.lbl_title.setStyleSheet("font-size: 15px; font-weight: 800; color: #8FC9DC; margin-bottom: 4px;")
+            self.lbl_title.setStyleSheet("font-size: 14px; font-weight: 900; color: #8FC9DC; margin-bottom: 4px; border: none;")
             self.layout.addWidget(self.lbl_title)
 
     def add_widget(self, widget: QWidget):
@@ -85,7 +85,8 @@ class CardWidget(QFrame):
 class FormRow(QWidget):
     """
     [TIER-0] Form layout component.
-    Aligns a label on the left and an input widget on the right (or stacked if narrowed).
+    Aligns a label on the left and an input widget on the right.
+    Hardened with WordWrap and size constraints to prevent layout breaking.
     """
     def __init__(self, label_text: str, input_widget: QWidget, parent=None):
         super().__init__(parent)
@@ -94,8 +95,9 @@ class FormRow(QWidget):
         layout.setSpacing(16)
         
         lbl = QLabel(label_text)
-        lbl.setStyleSheet("color: #E2E8F0; font-weight: 600; font-size: 13px;")
-        lbl.setMinimumWidth(200) # Fixed label width for table-like alignment
+        lbl.setStyleSheet("color: #E2E8F0; font-weight: 600; font-size: 13px; border: none;")
+        lbl.setMinimumWidth(180) # Memberi ruang proporsional
+        lbl.setWordWrap(True)
         lbl.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         
         input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -106,11 +108,12 @@ class FormRow(QWidget):
 class ModernButton(QPushButton):
     """
     [TIER-0] Standardized enterprise button mapping to QSS states.
-    Options: 'primary', 'outline', 'danger', 'success'
+    Equipped with Async Guard (set_loading) to prevent double-click worker crashes.
     """
     def __init__(self, text: str, btn_type: str = "primary", parent=None):
         super().__init__(text, parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._original_text = text
         
         if btn_type == "primary":
             self.setObjectName("PrimaryBtn")
@@ -118,16 +121,24 @@ class ModernButton(QPushButton):
             self.setObjectName("OutlineBtn")
         elif btn_type == "danger":
             self.setObjectName("DangerBtn")
-        # Extendable based on QSS configurations
+            
+    def set_loading(self, is_loading: bool, loading_text: str = "⏳ Memproses...") -> None:
+        """[ENTERPRISE SAFEGUARD]: Cegah double-submission / race condition UI."""
+        self.setEnabled(not is_loading)
+        if is_loading:
+            self._original_text = self.text()
+            self.setText(loading_text)
+        else:
+            self.setText(self._original_text)
 
 # ==============================================================================
-# 3. INTERACTIVE TOUR OVERLAY
+# 3. INTERACTIVE TOUR OVERLAY (HARDENED)
 # ==============================================================================
 
 class InteractiveTourOverlay(QWidget):
     """
-    [TIER-0] Overlay to display interactive tours/tips guiding users through the UI.
-    Hardened with boundary clamping and C++ object deletion protection.
+    [TIER-0] Overlay to display interactive tours/tips.
+    Hardened with boundary clamping, parent resize event hooking, and C++ object deletion protection.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -139,7 +150,6 @@ class InteractiveTourOverlay(QWidget):
         self.steps = []
         self.target_rect = QRect(0, 0, 0, 0)
         
-        # UI Construction
         self.info_box = QFrame(self)
         self.info_box.setStyleSheet("background-color: #0F172A; border: 1px solid #F59E0B; border-radius: 12px; padding: 20px; width: 340px;")
         
@@ -174,32 +184,40 @@ class InteractiveTourOverlay(QWidget):
         self.info_layout.addWidget(self.lbl_desc)
         self.info_layout.addLayout(btn_layout)
 
+    def setParent(self, parent):
+        """[ENTERPRISE FIX]: Event Filter Injection untuk melacak Resize Parent."""
+        if self.parent():
+            self.parent().removeEventFilter(self)
+        super().setParent(parent)
+        if parent:
+            parent.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        """Mencegah overlay tidak menutupi seluruh layar saat jendela dibesarkan/dikecilkan."""
+        if obj == self.parent() and event.type() == QEvent.Type.Resize:
+            if self.isVisible():
+                self.resize(event.size())
+                self.update_step() # Hitung ulang target lubang fokus
+        return super().eventFilter(obj, event)
+
     def set_steps(self, steps: list) -> None: 
-        """Validates and loads the tour steps sequence."""
         if not isinstance(steps, list):
             logger.error("[TOUR] 'steps' must be a list of dictionaries.")
             return
         self.steps = steps
 
     def start_tour(self) -> None:
-        if not self.steps: 
-            logger.warning("[TOUR] Attempted to start tour with zero steps.")
-            return
-            
+        if not self.steps: return
         self.current_step = 0
-        if self.parent():
-            self.resize(self.parent().size())
-            
+        if self.parent(): self.resize(self.parent().size())
         self.show()
         self.raise_()
         self.update_step()
 
     def next_step(self) -> None:
         self.current_step += 1
-        if self.current_step >= len(self.steps): 
-            self.hide_tour()
-        else: 
-            self.update_step()
+        if self.current_step >= len(self.steps): self.hide_tour()
+        else: self.update_step()
 
     def hide_tour(self) -> None: 
         self.hide()
@@ -211,75 +229,51 @@ class InteractiveTourOverlay(QWidget):
             self.lbl_desc.setText(step.get('desc', '...'))
             self.btn_next.setText("Selesai" if self.current_step == len(self.steps) - 1 else "Lanjut ➔")
             
-            # Memaksa UI menghitung ulang ukuran frame setelah teks panjang dimasukkan
             self.info_box.adjustSize()
-            
             widget = step.get('widget')
             
             is_valid_widget = False
             if widget:
                 try:
-                    # [ENTERPRISE FIX]: Mencegah PyQt RuntimeError jika C++ Object sudah dibuang
                     is_valid_widget = not widget.isHidden() and widget.isVisible()
                 except RuntimeError:
                     is_valid_widget = False
-                    logger.warning("[TOUR] Target widget telah dihapus dari C++ Memory. Mengalihkan ke mode Fullscreen.")
 
             if is_valid_widget:
                 try:
-                    # Translasi koordinat dari widget target ke koordinat global layar
                     global_pos_tl = widget.mapToGlobal(QPoint(0,0))
                     local_pos_tl = self.mapFromGlobal(global_pos_tl)
                     
                     global_pos_br = widget.mapToGlobal(QPoint(widget.width(), widget.height()))
                     local_pos_br = self.mapFromGlobal(global_pos_br)
                     
-                    # Membesarkan lubang sorot (padding -8, +8)
                     self.target_rect = QRect(local_pos_tl, local_pos_br).adjusted(-8, -8, 8, 8)
                     
-                    box_w = self.info_box.width()
-                    box_h = self.info_box.height()
-                    screen_w = self.width()
-                    screen_h = self.height()
+                    box_w, box_h = self.info_box.width(), self.info_box.height()
+                    screen_w, screen_h = self.width(), self.height()
                     
-                    # Failsafe Boundary Clamping (Mencegah Tooltip keluar dari layar)
                     x = local_pos_br.x() + 20
-                    if x + box_w > screen_w: 
-                        x = local_pos_tl.x() - box_w - 20
-                        
+                    if x + box_w > screen_w: x = local_pos_tl.x() - box_w - 20
                     y = local_pos_tl.y()
-                    if y + box_h > screen_h: 
-                        y = screen_h - box_h - 20
+                    if y + box_h > screen_h: y = screen_h - box_h - 20
                         
-                    # Pengaman ekstra: Kotak tidak boleh memiliki koordinat negatif
                     self.info_box.move(max(10, x), max(10, y))
-                except Exception as ex:
-                    logger.error(f"[TOUR] Kesalahan kalkulasi geometri: {ex}")
-                    self.target_rect = QRect(0,0,0,0) # Fallback to fullscreen
+                except Exception:
+                    self.target_rect = QRect(0,0,0,0) 
             else:
-                # Mode Layar Penuh (Tidak ada widget spesifik yang disorot)
                 self.target_rect = QRect(0,0,0,0)
-                # Tengahkan kotak info di layar
                 self.info_box.move(max(0, self.width()//2 - self.info_box.width()//2), 
                                    max(0, self.height()//2 - self.info_box.height()//2))
-                                   
-            self.update() # Memicu paintEvent ulang
+            self.update() 
             
         except Exception as e:
-            logger.error(f"[TOUR] Gagal merender langkah tur ke-{self.current_step}: {str(e)}")
+            logger.error(f"[TOUR] Failed step {self.current_step}: {str(e)}")
             self.hide_tour()
 
     def paintEvent(self, event) -> None:
-        """
-        Menggambar latar belakang semi-transparan dengan lubang transparan ('sorotan')
-        di atas target_rect menggunakan komposisi jalur (OddEvenFill).
-        """
-        if self.width() <= 0 or self.height() <= 0:
-            return
-
+        if self.width() <= 0 or self.height() <= 0: return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
         path = QPainterPath()
         path.addRect(QRectF(self.rect()))
         
@@ -288,14 +282,11 @@ class InteractiveTourOverlay(QWidget):
             hole.addRoundedRect(QRectF(self.target_rect), 8, 8)
             path.addPath(hole)
             
-        # OddEvenFill = bagian yang bertumpuk (hole) tidak akan diisi warna
         path.setFillRule(Qt.FillRule.OddEvenFill)
-        # Efek Dimming (Layar menggelap)
-        painter.fillPath(path, QColor(0, 0, 0, 220))
+        painter.fillPath(path, QColor(15, 23, 42, 200)) # Slate-900 with alpha
         
-        # Outline emas pada lubang sorot
         if not self.target_rect.isEmpty():
-            pen = QPen(QColor(245, 158, 11)) # Amber-500
+            pen = QPen(QColor(245, 158, 11))
             pen.setWidth(2)
             painter.setPen(pen)
             painter.drawRoundedRect(self.target_rect, 8, 8)
