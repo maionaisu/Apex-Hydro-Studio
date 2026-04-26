@@ -5,11 +5,11 @@ import os
 import json
 import logging
 import traceback
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
-                             QFormLayout, QLineEdit, QLabel, QPushButton, 
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
+                             QFormLayout, QLineEdit, QLabel, 
                              QTextEdit, QFileDialog, QMessageBox, QFrame, 
-                             QScrollArea, QTabWidget, QTableWidget, QTableWidgetItem, 
-                             QSlider, QComboBox, QCheckBox, QHeaderView, QSplitter, QGridLayout)
+                             QTabWidget, QTableWidget, QTableWidgetItem, 
+                             QSlider, QComboBox, QCheckBox, QHeaderView, QSplitter)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtCore import Qt
@@ -21,6 +21,8 @@ try:
 except ImportError:
     HAS_GEOPANDAS = False
 
+# Integrasi Enterprise Flexbox
+from ui.components.core_widgets import FlexScrollArea, CardWidget, ModernButton
 from ui.components.web_bridge import WebBridge
 from utils.config import get_leaflet_html
 from workers.mesh_worker import DepthOfClosure2DWorker, ApexDIMROrchestratorWorker
@@ -28,47 +30,7 @@ from core.state_manager import app_state
 
 logger = logging.getLogger(__name__)
 
-# --- ENTERPRISE QSS STYLESHEETS ---
-STYLE_GROUPBOX = """
-    QGroupBox { background-color: #2D3139; border: 1px solid #3A3F4A; border-radius: 12px; margin-top: 15px; padding-top: 35px; font-weight: 800; color: #FFFFFF; font-size: 14px; }
-    QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 6px 16px; background-color: transparent; color: #8FC9DC; top: 8px; left: 10px; }
-"""
-STYLE_INPUTS = """
-    QLineEdit, QComboBox { background-color: #1F2227; border: 1px solid #3A3F4A; border-radius: 8px; padding: 10px 14px; color: #FFFFFF; font-size: 13px; font-family: 'Consolas', monospace; }
-    QLineEdit:focus, QComboBox:focus { border: 1px solid #595FF7; background-color: #2D3139; }
-    QComboBox::drop-down { border: none; }
-    QComboBox QAbstractItemView { background-color: #2D3139; color: #FFFFFF; selection-background-color: #595FF7; border: 1px solid #3A3F4A; border-radius: 8px; }
-    QCheckBox { color: #9CA3AF; font-size: 13px; font-weight: 800; }
-    QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #3A3F4A; background: #1F2227; }
-    QCheckBox::indicator:checked { background: #595FF7; border: 1px solid #7176F8; }
-"""
-STYLE_TABLE = """
-    QTableWidget { background-color: #1F2227; color: #FFFFFF; gridline-color: #3A3F4A; border: 1px solid #3A3F4A; border-radius: 8px; font-family: 'Consolas', monospace; }
-    QHeaderView::section { background-color: #2D3139; color: #8FC9DC; padding: 8px; font-weight: 800; border: none; border-bottom: 1px solid #3A3F4A; border-right: 1px solid #3A3F4A; }
-"""
-STYLE_SEGMENTED_TAB = """
-    QTabWidget#SegmentedTab::pane { border: 1px solid #3A3F4A; border-radius: 12px; background: transparent; top: -1px; }
-    QTabBar#SegmentedBar { alignment: center; }
-    QTabBar#SegmentedBar::tab { background: #1F2227; color: #9CA3AF; border: 1px solid #3A3F4A; padding: 12px 30px; font-weight: 900; font-size: 14px; margin: 0px; }
-    QTabBar#SegmentedBar::tab:first { border-top-left-radius: 12px; border-bottom-left-radius: 12px; border-right: none; }
-    QTabBar#SegmentedBar::tab:last { border-top-right-radius: 12px; border-bottom-right-radius: 12px; border-left: none; }
-    QTabBar#SegmentedBar::tab:selected { background: #595FF7; color: #FFFFFF; border-color: #595FF7; }
-"""
-STYLE_BTNS = """
-    QPushButton#PrimaryBtn { background-color: #595FF7; color: #FFFFFF; border: none; border-radius: 10px; padding: 14px 16px; font-weight: 900; font-size: 14px; }
-    QPushButton#PrimaryBtn:hover { background-color: #7176F8; }
-    QPushButton#PrimaryBtn:disabled { background-color: #3A3F4A; color: #6B7280; }
-    QPushButton#OutlineBtn { background-color: transparent; color: #8FC9DC; border: 1px solid #3A3F4A; border-radius: 8px; padding: 10px 16px; font-weight: 800; font-size: 13px; }
-    QPushButton#OutlineBtn:hover { background-color: rgba(143, 201, 220, 0.1); border-color: #8FC9DC; }
-"""
-STYLE_SLIDER = """
-    QSlider::groove:horizontal { border-radius: 4px; height: 8px; background-color: #1F2227; border: 1px solid #3A3F4A; }
-    QSlider::handle:horizontal { background-color: #FFFFFF; border: 3px solid #595FF7; width: 18px; height: 18px; margin: -6px 0; border-radius: 12px; }
-    QSlider::sub-page:horizontal { background-color: #595FF7; border-radius: 4px; }
-"""
-
-LABEL_STYLE = "QLabel { color: #CBD5E1; font-weight: bold; font-size: 13px; }"
-
+LABEL_STYLE = "QLabel { color: #CBD5E1; font-weight: bold; font-size: 13px; border: none; }"
 
 class Modul4Mesh(QWidget):
     def __init__(self, parent=None):
@@ -81,20 +43,33 @@ class Modul4Mesh(QWidget):
         app_state.state_updated.connect(self.on_global_state_changed)
 
     def setup_ui(self) -> None:
-        self.setStyleSheet(f"{STYLE_GROUPBOX} {STYLE_INPUTS} {STYLE_TABLE} {STYLE_SEGMENTED_TAB} {STYLE_BTNS} {STYLE_SLIDER}")
-        
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(24, 24, 24, 24)
         main_layout.setSpacing(16)
 
         # --- HEADER ---
         head = QVBoxLayout()
+        title_container = QFrame()
+        title_container.setStyleSheet("background-color: #1E2128; border: 1px solid #3A3F4A; border-radius: 12px;")
+        tc_layout = QVBoxLayout(title_container)
+        tc_layout.setContentsMargins(20, 20, 20, 20)
+        tc_layout.setSpacing(8)
+        
         t = QLabel("DIMR Domain & Adaptive Mesh Orchestrator")
-        t.setStyleSheet("font-size: 26px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px;")
-        d = QLabel("Rekayasa arsitektur grid Ganda: Flexible Mesh (D-FLOW) dan Rectilinear Grid (D-WAVES) berbasis Dual-AOI.")
-        d.setStyleSheet("color: #9CA3AF; font-size: 14px;")
-        head.addWidget(t)
-        head.addWidget(d)
+        t.setStyleSheet("font-size: 26px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px; border: none;")
+        
+        d = QLabel(
+            "<div style='text-align: justify; line-height: 1.6;'>"
+            "Rekayasa arsitektur grid Ganda: <b>Flexible Mesh (D-FLOW)</b> dan <b>Rectilinear Grid (D-WAVES)</b> "
+            "berbasis Dual-AOI dengan <i>Dynamic Mesh Refinement</i> dan Full XML Coupling."
+            "</div>"
+        )
+        d.setStyleSheet("color: #9CA3AF; font-size: 13px; border: none;")
+        d.setWordWrap(True)
+        
+        tc_layout.addWidget(t)
+        tc_layout.addWidget(d)
+        head.addWidget(title_container)
         main_layout.addLayout(head)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -117,7 +92,6 @@ class Modul4Mesh(QWidget):
             QTabBar::tab:selected { background: #2D3139; color: #8FC9DC; border-bottom: 3px solid #8FC9DC;}
         """)
         
-        # Leaflet Map Tab
         tab_map = QWidget()
         lay_map = QVBoxLayout(tab_map)
         lay_map.setContentsMargins(1, 1, 1, 1)
@@ -133,7 +107,6 @@ class Modul4Mesh(QWidget):
         lay_map.addWidget(self.web_mesh)
         self.gis_tabs_m.addTab(tab_map, "🗺️ Peta Interaktif (Dual-AOI)")
 
-        # Topology Preview Tab
         tab_mesh_viz = QWidget()
         lay_mz = QVBoxLayout(tab_mesh_viz)
         lay_mz.setContentsMargins(20, 20, 20, 20)
@@ -143,7 +116,6 @@ class Modul4Mesh(QWidget):
         lay_mz.addWidget(self.lbl_mesh_preview)
         self.gis_tabs_m.addTab(tab_mesh_viz, "🕸️ Pratinjau Topologi Mesh")
 
-        # DoC Panorama Tab
         tab_doc = QWidget()
         lay_doc = QVBoxLayout(tab_doc)
         lay_doc.setContentsMargins(20, 20, 20, 20)
@@ -159,13 +131,10 @@ class Modul4Mesh(QWidget):
         self.tabs_aoi = QTabWidget()
         self.tabs_aoi.setStyleSheet(self.gis_tabs_m.styleSheet())
         
-        # Tab 1: Set Inner BBox (Micro)
         t1 = QWidget()
         l1 = QVBoxLayout(t1)
         l1.setContentsMargins(20, 24, 20, 20)
-        lbl_bbox = QLabel("Batas Area Mikro (Inner Lat/Lon):")
-        lbl_bbox.setStyleSheet(LABEL_STYLE)
-        l1.addWidget(lbl_bbox)
+        l1.addWidget(QLabel("Batas Area Mikro (Inner Lat/Lon):", styleSheet=LABEL_STYLE))
         
         self.tbl_bbox = QTableWidget(4, 1)
         self.tbl_bbox.setVerticalHeaderLabels(["North", "South", "East", "West"])
@@ -177,24 +146,18 @@ class Modul4Mesh(QWidget):
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.tbl_bbox.setItem(j, 0, item)
             
-        # [BUG FIX]: Hapus event koneksi otomatis agar tidak menggambar hantu saat inisialisasi
         l1.addWidget(self.tbl_bbox)
         
-        btn_m1 = QPushButton("Update Area Mikro")
-        btn_m1.setObjectName("OutlineBtn")
-        btn_m1.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_m1 = ModernButton("Update Area Mikro", "outline")
         btn_m1.clicked.connect(self.manual_bbox_update)
         l1.addWidget(btn_m1)
         l1.addStretch()
         self.tabs_aoi.addTab(t1, "Set BBox Mikro")
         
-        # Tab 2: Transect
         t2 = QWidget()
         l2 = QVBoxLayout(t2)
         l2.setContentsMargins(20, 24, 20, 20)
-        lbl_trans = QLabel("Manual Transect Nodes:")
-        lbl_trans.setStyleSheet(LABEL_STYLE)
-        l2.addWidget(lbl_trans)
+        l2.addWidget(QLabel("Manual Transect Nodes:", styleSheet=LABEL_STYLE))
         
         self.tbl_man = QTableWidget(2, 2)
         self.tbl_man.setHorizontalHeaderLabels(["Lat (Y)", "Lon (X)"])
@@ -206,12 +169,9 @@ class Modul4Mesh(QWidget):
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.tbl_man.setItem(i//2, i%2, item)
             
-        # [BUG FIX]: Hapus koneksi otomatis pada tbl_man
         l2.addWidget(self.tbl_man)
         
-        btn_m2 = QPushButton("Update Line Profiles")
-        btn_m2.setObjectName("OutlineBtn")
-        btn_m2.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_m2 = ModernButton("Update Line Profiles", "outline")
         btn_m2.clicked.connect(self.manual_transect_update)
         l2.addWidget(btn_m2)
         l2.addStretch()
@@ -221,27 +181,22 @@ class Modul4Mesh(QWidget):
         splitter.addWidget(top_widget)
 
         # ==============================================================================
-        # 2. BOTTOM SECTION: SEGMENTED CONTROLS & TERMINAL
+        # 2. BOTTOM SECTION: SEGMENTED CONTROLS & TERMINAL (FLEX SCROLL AREA)
         # ==============================================================================
-        bot_widget = QWidget()
-        bot_layout = QVBoxLayout(bot_widget)
-        bot_layout.setContentsMargins(0, 0, 0, 0)
+        self.scroll_ctrl = FlexScrollArea()
         
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("background-color: transparent;")
-        
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(0, 5, 0, 0)
-        scroll_layout.setSpacing(20)
-
-        # --- SEGMENTED TABS (D-FLOW vs D-WAVES) ---
+        # Segmented Tabs Styling
         self.mode_tabs = QTabWidget()
         self.mode_tabs.setObjectName("SegmentedTab")
         self.mode_tabs.tabBar().setObjectName("SegmentedBar")
-        self.mode_tabs.tabBar().setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.mode_tabs.setStyleSheet("""
+            QTabWidget#SegmentedTab::pane { border: 1px solid #3A3F4A; border-radius: 12px; background: transparent; top: -1px; }
+            QTabBar#SegmentedBar { alignment: center; }
+            QTabBar#SegmentedBar::tab { background: #1F2227; color: #9CA3AF; border: 1px solid #3A3F4A; padding: 12px 30px; font-weight: 900; font-size: 14px; margin: 0px; }
+            QTabBar#SegmentedBar::tab:first { border-top-left-radius: 12px; border-bottom-left-radius: 12px; border-right: none; }
+            QTabBar#SegmentedBar::tab:last { border-top-right-radius: 12px; border-bottom-right-radius: 12px; border-left: none; }
+            QTabBar#SegmentedBar::tab:selected { background: #595FF7; color: #FFFFFF; border-color: #595FF7; }
+        """)
         
         # ---------------------------------------------------------
         # TAB 1: D-FLOW (Flexible Mesh)
@@ -253,43 +208,38 @@ class Modul4Mesh(QWidget):
         
         # D-FLOW LEFT: Domain & Boundary Geometry
         fc1 = QVBoxLayout()
-        fgrp1 = QGroupBox("Geometri Pesisir & Area Of Interest (AOI)")
-        fg1 = QVBoxLayout(fgrp1)
-        fg1.setSpacing(16)
+        fgrp1 = CardWidget("Geometri Pesisir & Area Of Interest (AOI)")
         
         aoi_info = QLabel("<b>Makro (Outer):</b> Otomatis setara Grid ERA5 (Read-Only)<br><b>Mikro (Inner):</b> Gambarlah kotak di Peta (Area Refinement)")
-        aoi_info.setStyleSheet("color: #9CA3AF; font-size: 13px; line-height: 1.4;")
-        fg1.addWidget(aoi_info)
+        aoi_info.setStyleSheet("color: #9CA3AF; font-size: 13px; line-height: 1.4; border: none;")
+        fgrp1.add_widget(aoi_info)
         
         self.lbl_inner_bbox = QLabel("BBOX Mikro (Inner): Belum Digambar")
         self.lbl_inner_bbox.setStyleSheet("color:#FC3F4D; font-weight:bold; font-size:12px; background-color: #1F2227; padding: 10px; border-radius: 6px; border: 1px solid #3A3F4A;")
         self.lbl_inner_bbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        fg1.addWidget(self.lbl_inner_bbox)
+        fgrp1.add_widget(self.lbl_inner_bbox)
         
         h_shp = QHBoxLayout()
-        btn_shp = QPushButton("🗺️ Coastline (.shp / .ldb)")
-        btn_shp.setObjectName("OutlineBtn")
-        btn_shp.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_shp = ModernButton("🗺️ Coastline (.shp / .ldb)", "outline")
         btn_shp.clicked.connect(self.import_aoi_shapefile)
         self.lbl_coast_stat = QLabel("Tidak Ada")
-        self.lbl_coast_stat.setStyleSheet("color: #6B7280; font-weight: bold; font-size: 12px;")
+        self.lbl_coast_stat.setStyleSheet("color: #6B7280; font-weight: bold; font-size: 12px; border: none;")
         h_shp.addWidget(btn_shp, stretch=1)
         h_shp.addWidget(self.lbl_coast_stat, stretch=1)
-        fg1.addLayout(h_shp)
+        fgrp1.add_layout(h_shp)
         
         self.chk_clip_land = QCheckBox("Hapus Node Daratan (Clip Landward Edge)")
         self.chk_clip_land.setChecked(True)
-        self.chk_clip_land.setToolTip("Otomatis menghapus mesh yang tumpang tindih dengan poligon daratan.")
-        fg1.addWidget(self.chk_clip_land)
+        self.chk_clip_land.setStyleSheet("color: #E2E8F0; font-weight: 600; border: none;")
+        fgrp1.add_widget(self.chk_clip_land)
         
-        fg1.addWidget(QLabel("Titik Transek (Morphodynamics DoC):", styleSheet="color: #8FC9DC; font-weight: 800; font-size: 13px; margin-top: 10px;"))
+        fgrp1.add_widget(QLabel("Titik Transek (Morphodynamics DoC):", styleSheet="color: #8FC9DC; font-weight: 800; font-size: 13px; margin-top: 10px; border: none;"))
         
-        # Tabel D-Flow hanya sebagai representasi visual state, tidak perlu itemChanged otomatis
         self.tbl_trans = QTableWidget(2, 2)
         self.tbl_trans.setHorizontalHeaderLabels(["Lat (Y)", "Lon (X)"])
         self.tbl_trans.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tbl_trans.setMaximumHeight(90)
-        fg1.addWidget(self.tbl_trans)
+        fgrp1.add_widget(self.tbl_trans)
         
         fc1.addWidget(fgrp1)
         fc1.addStretch()
@@ -297,17 +247,14 @@ class Modul4Mesh(QWidget):
         
         # D-FLOW RIGHT: Physics & Mesh Rules
         fc2 = QVBoxLayout()
-        fgrp2 = QGroupBox("Batimetri, Fisika Batas & Resolusi (MDU)")
-        fg2 = QFormLayout(fgrp2)
-        fg2.setHorizontalSpacing(16)
-        fg2.setVerticalSpacing(16)
+        fgrp2 = CardWidget("Batimetri, Fisika Batas & Resolusi (MDU)")
+        fg2 = QFormLayout()
+        fg2.setHorizontalSpacing(16); fg2.setVerticalSpacing(16)
         
-        btn_b = QPushButton("📂 File Batimetri (.xyz)")
-        btn_b.setObjectName("OutlineBtn")
-        btn_b.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_b = ModernButton("📂 File Batimetri (.xyz)", "outline")
         btn_b.clicked.connect(lambda: self.load_mesh_file('bathy'))
         self.lbl_bathy_stat = QLabel("Tidak Ada")
-        self.lbl_bathy_stat.setStyleSheet("color: #6B7280; font-weight: bold; font-size: 12px;")
+        self.lbl_bathy_stat.setStyleSheet("color: #6B7280; font-weight: bold; font-size: 12px; border: none;")
         hb = QHBoxLayout()
         hb.addWidget(btn_b); hb.addWidget(self.lbl_bathy_stat)
         fg2.addRow(hb)
@@ -315,23 +262,24 @@ class Modul4Mesh(QWidget):
         self.cmb_bnd_dir = QComboBox()
         self.cmb_bnd_dir.addItems(["South", "North", "East", "West"])
         self.cmb_bnd_dir.setItemText(0, "Selatan (Samudra Hindia)")
-        fg2.addRow(QLabel("Arah Laut Lepas:", styleSheet="color: #9CA3AF; font-weight: bold;"), self.cmb_bnd_dir)
+        fg2.addRow(QLabel("Arah Laut Lepas:", styleSheet=LABEL_STYLE), self.cmb_bnd_dir)
         
         self.chk_riemann = QCheckBox("Gunakan Riemann Absorbing Boundary")
         self.chk_riemann.setChecked(True)
+        self.chk_riemann.setStyleSheet("color: #E2E8F0; font-weight: 600; border: none;")
         fg2.addRow("", self.chk_riemann)
         
-        self.sld_fmax, self.inp_fmax = self.create_slider_row(50, 1000, 750) # Coarse default 750
-        fg2.addRow(QLabel("Res. Kasar (Outer):", styleSheet="color: #8FC9DC; font-weight: bold;"), self.make_hbox(self.sld_fmax, self.inp_fmax))
+        self.sld_fmax, self.inp_fmax = self.create_slider_row(50, 1000, 750) 
+        fg2.addRow(QLabel("Res. Kasar (Outer):", styleSheet=LABEL_STYLE), self.make_hbox(self.sld_fmax, self.inp_fmax))
         
         self.sld_fmin, self.inp_fmin = self.create_slider_row(5, 100, 12)
-        fg2.addRow(QLabel("Res. Halus (Inner):", styleSheet="color: #8FC9DC; font-weight: bold;"), self.make_hbox(self.sld_fmin, self.inp_fmin))
+        fg2.addRow(QLabel("Res. Halus (Inner):", styleSheet=LABEL_STYLE), self.make_hbox(self.sld_fmin, self.inp_fmin))
         
-        btn_doc = QPushButton("🔭 Kalkulasi DoC (Depth of Closure)")
-        btn_doc.setObjectName("OutlineBtn")
-        btn_doc.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        fgrp2.add_layout(fg2)
+        
+        btn_doc = ModernButton("🔭 Kalkulasi DoC (Depth of Closure)", "outline")
         btn_doc.clicked.connect(self.run_doc_calc)
-        fg2.addRow(btn_doc)
+        fgrp2.add_widget(btn_doc)
         
         fc2.addWidget(fgrp2)
         fc2.addStretch()
@@ -348,77 +296,71 @@ class Modul4Mesh(QWidget):
         wave_lay.setSpacing(24)
         
         wc1 = QVBoxLayout()
-        wgrp1 = QGroupBox("Domain Gelombang & Geometri Grid")
-        wg1 = QVBoxLayout(wgrp1)
-        wg1.setSpacing(16)
+        wgrp1 = CardWidget("Domain Gelombang & Geometri Grid")
         
         info_wave = QLabel("Modul SWAN (D-Waves) beroperasi pada domain bersarang (Nested) atau grid Rectilinear untuk stabilitas komputasi.")
-        info_wave.setStyleSheet("color: #9CA3AF; font-size: 13px; line-height: 1.4;")
+        info_wave.setStyleSheet("color: #9CA3AF; font-size: 13px; line-height: 1.4; border: none;")
         info_wave.setWordWrap(True)
-        wg1.addWidget(info_wave)
+        wgrp1.add_widget(info_wave)
         
         self.lbl_outer_bbox = QLabel("BBOX Makro (ERA5): Belum Tersedia")
         self.lbl_outer_bbox.setStyleSheet("color:#FC3F4D; font-weight:bold; font-size:12px; background-color: #1F2227; padding: 10px; border-radius: 6px; border: 1px solid #3A3F4A;")
         self.lbl_outer_bbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        wg1.addWidget(self.lbl_outer_bbox)
+        wgrp1.add_widget(self.lbl_outer_bbox)
         
         w_form = QFormLayout()
-        w_form.setVerticalSpacing(16)
-        w_form.setHorizontalSpacing(16)
+        w_form.setVerticalSpacing(16); w_form.setHorizontalSpacing(16)
         self.sld_wmax, self.inp_wmax = self.create_slider_row(50, 1000, 250)
-        w_form.addRow(QLabel("Res. DX/DY Kasar:", styleSheet="color: #8FC9DC; font-weight: bold;"), self.make_hbox(self.sld_wmax, self.inp_wmax))
+        w_form.addRow(QLabel("Res. DX/DY Kasar:", styleSheet=LABEL_STYLE), self.make_hbox(self.sld_wmax, self.inp_wmax))
         self.sld_wmin, self.inp_wmin = self.create_slider_row(10, 200, 25)
-        w_form.addRow(QLabel("Res. DX/DY Halus:", styleSheet="color: #8FC9DC; font-weight: bold;"), self.make_hbox(self.sld_wmin, self.inp_wmin))
-        wg1.addLayout(w_form)
+        w_form.addRow(QLabel("Res. DX/DY Halus:", styleSheet=LABEL_STYLE), self.make_hbox(self.sld_wmin, self.inp_wmin))
+        wgrp1.add_layout(w_form)
         
         wc1.addWidget(wgrp1)
         wc1.addStretch()
         wave_lay.addLayout(wc1, stretch=1)
         
         wc2 = QVBoxLayout()
-        wgrp2 = QGroupBox("Parameter Gelombang Fisik (MDW)")
-        wg2 = QFormLayout(wgrp2)
-        wg2.setHorizontalSpacing(16)
-        wg2.setVerticalSpacing(16)
+        wgrp2 = CardWidget("Parameter Gelombang Fisik (MDW)")
+        wg2 = QFormLayout()
+        wg2.setHorizontalSpacing(16); wg2.setVerticalSpacing(16)
         
         self.cmb_w_fric = QComboBox()
         self.cmb_w_fric.addItems(["JONSWAP", "COLLINS", "MADSEN"])
-        wg2.addRow(QLabel("Bottom Friction:", styleSheet="color: #9CA3AF; font-weight: bold;"), self.cmb_w_fric)
+        wg2.addRow(QLabel("Bottom Friction:", styleSheet=LABEL_STYLE), self.cmb_w_fric)
         
         self.inp_gamma = QLineEdit("0.73")
         self.inp_gamma.setFixedWidth(80)
-        wg2.addRow(QLabel("Gamma Breaking:", styleSheet="color: #9CA3AF; font-weight: bold;"), self.inp_gamma)
+        wg2.addRow(QLabel("Gamma Breaking:", styleSheet=LABEL_STYLE), self.inp_gamma)
         
         self.inp_w_level = QLineEdit("0.0")
         self.inp_w_level.setFixedWidth(80)
-        self.inp_w_level.setToolTip("Hanya digunakan pada Tahap 2 (D-WAVES Standalone) sebagai elevasi referensi pengganti pasang surut D-FLOW.")
-        wg2.addRow(QLabel("Elevasi Air Konstan (m):", styleSheet="color: #F7C159; font-weight: bold;"), self.inp_w_level)
+        wg2.addRow(QLabel("Elevasi Air Konstan (m):", styleSheet=LABEL_STYLE), self.inp_w_level)
         
         self.lbl_w_ic = QLabel("Hs: - m | Tp: - s | Dir: - °")
         self.lbl_w_ic.setStyleSheet("color: #595FF7; font-weight: bold; font-family: 'Consolas', monospace; font-size: 13px; padding: 10px; background: #1F2227; border-radius: 8px; border: 1px solid #3A3F4A;")
-        wg2.addRow(QLabel("Initial Condition:", styleSheet="color: #9CA3AF; font-weight: bold;"), self.lbl_w_ic)
+        wg2.addRow(QLabel("Initial Condition:", styleSheet=LABEL_STYLE), self.lbl_w_ic)
         
+        wgrp2.add_layout(wg2)
         wc2.addWidget(wgrp2)
         wc2.addStretch()
         wave_lay.addLayout(wc2, stretch=1)
         
         self.mode_tabs.addTab(tab_wave, "〰️ D-WAVES (Rectilinear Grid)")
-        scroll_layout.addWidget(self.mode_tabs)
+        self.scroll_ctrl.add_widget(self.mode_tabs)
 
         self.lbl_cost = QLabel("Estimasi Beban Komputasi: Menghitung...")
         self.lbl_cost.setStyleSheet("background-color: #1F2227; padding: 12px; border: 1px solid #3A3F4A; border-radius: 8px; font-size: 13px; font-weight: bold; color: #9CA3AF;")
         self.lbl_cost.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        scroll_layout.addWidget(self.lbl_cost)
+        self.scroll_ctrl.add_widget(self.lbl_cost)
 
         # --- BUILD STRATEGY & EXECUTION BUTTON ---
-        bgrp = QGroupBox("3. Strategi Kompilasi & Kalibrasi")
-        blay = QVBoxLayout(bgrp)
-        blay.setSpacing(16)
+        bgrp = CardWidget("3. Strategi Kompilasi & Kalibrasi")
         
-        info_b = QLabel("PENTING: Praktik oseanografi numerik mensyaratkan kalibrasi muka air pasut (D-FLOW) secara terpisah sebelum melakukan Full Coupling dengan gelombang (D-WAVES) untuk menghindari *error* berantai. Gunakan Tahap 1 dan Tahap 2 sebelum melakukan Full Coupling.")
-        info_b.setStyleSheet("color: #F7C159; font-size: 12px; line-height: 1.4; font-style: italic;")
+        info_b = QLabel("PENTING: Praktik oseanografi numerik mensyaratkan kalibrasi muka air pasut (D-FLOW) secara terpisah sebelum melakukan Full Coupling dengan gelombang (D-WAVES) untuk menghindari *error* berantai.")
+        info_b.setStyleSheet("color: #F7C159; font-size: 12px; line-height: 1.4; font-style: italic; border: none;")
         info_b.setWordWrap(True)
-        blay.addWidget(info_b)
+        bgrp.add_widget(info_b)
         
         self.cmb_build_mode = QComboBox()
         self.cmb_build_mode.addItems([
@@ -427,31 +369,24 @@ class Modul4Mesh(QWidget):
             "Tahap 3: FULL COUPLING DIMR (Interaksi Flow-Wave Dinamis)"
         ])
         self.cmb_build_mode.currentTextChanged.connect(self._update_build_btn_text)
-        blay.addWidget(self.cmb_build_mode)
+        bgrp.add_widget(self.cmb_build_mode)
 
-        self.btn_mesh = QPushButton("⚡ RAKIT D-FLOW STANDALONE (.mdu)")
-        self.btn_mesh.setObjectName("PrimaryBtn")
-        self.btn_mesh.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_mesh = ModernButton("⚡ RAKIT D-FLOW STANDALONE (.mdu)", "primary")
         self.btn_mesh.clicked.connect(self.run_dimr_pipeline)
-        blay.addWidget(self.btn_mesh)
+        bgrp.add_widget(self.btn_mesh)
         
-        scroll_layout.addWidget(bgrp)
+        self.scroll_ctrl.add_widget(bgrp)
 
         # --- TERMINAL LOG ---
-        bl = QVBoxLayout()
-        bl.setContentsMargins(0, 10, 0, 0)
-        bl.addWidget(QLabel("System Trace (Dimr Orchestrator):", styleSheet="font-weight:900; color:#8FC9DC; font-size: 14px;"))
+        self.scroll_ctrl.add_widget(QLabel("System Trace (Dimr Orchestrator):", styleSheet="font-weight:900; color:#8FC9DC; font-size: 14px; margin-top: 10px;"))
         self.log_mesh = QTextEdit()
         self.log_mesh.setReadOnly(True)
-        self.log_mesh.setStyleSheet("background-color: #1E2128; color: #8FC9DC; font-family: Consolas, monospace; font-size: 13px; border: 1px solid #3A3F4A; border-radius: 8px; padding: 12px;")
+        self.log_mesh.setObjectName("TerminalOutput")
         self.log_mesh.setMinimumHeight(150)
-        bl.addWidget(self.log_mesh)
-        scroll_layout.addLayout(bl)
+        self.scroll_ctrl.add_widget(self.log_mesh)
         
-        scroll_layout.addStretch()
-        scroll.setWidget(scroll_content)
-        bot_layout.addWidget(scroll)
-        splitter.addWidget(bot_widget)
+        self.scroll_ctrl.add_stretch()
+        splitter.addWidget(self.scroll_ctrl)
         
         splitter.setSizes([500, 400])
         main_layout.addWidget(splitter)
@@ -484,7 +419,7 @@ class Modul4Mesh(QWidget):
 
     def make_hbox(self, widget1, widget2):
         h = QHBoxLayout()
-        h.setSpacing(12)
+        h.setSpacing(12); h.setContentsMargins(0,0,0,0)
         h.addWidget(widget1, stretch=4)
         h.addWidget(widget2, stretch=1)
         return h
@@ -519,16 +454,14 @@ class Modul4Mesh(QWidget):
                 
                 js_outer = f"var outB = [[{outer['S']}, {outer['W']}], [{outer['N']}, {outer['E']}]]; L.rectangle(outB, {{color: '#FC3F4D', weight: 2, fillOpacity: 0.05, dashArray: '5, 10'}}).addTo(map); map.fitBounds(outB);"
                 self.web_mesh.page().runJavaScript(js_outer)
-                
-            # [ENTERPRISE BUG-FIX]: Trigger ulang kalkulasi biaya HPC saat batas makro berubah
-            self.update_sliders()
+                self.update_sliders()
 
     def load_mesh_file(self, ftype: str) -> None:
         p, _ = QFileDialog.getOpenFileName(self, "Pilih File", "", "XYZ Data (*.xyz)")
         if p:
             self.file_bathy = os.path.abspath(p)
             self.lbl_bathy_stat.setText(f"✓ {os.path.basename(p)}")
-            self.lbl_bathy_stat.setStyleSheet("color: #42E695;")
+            self.lbl_bathy_stat.setStyleSheet("color: #42E695; border: none;")
 
     def import_aoi_shapefile(self) -> None:
         p, _ = QFileDialog.getOpenFileName(self, "Pilih Pesisir / Land Boundary", "", "Vector & Boundary (*.shp *.ldb *.kml *.geojson)")
@@ -538,7 +471,7 @@ class Modul4Mesh(QWidget):
             if p.endswith('.ldb'):
                 self.file_ldb = os.path.abspath(p)
                 self.lbl_coast_stat.setText(f"✓ LDB Native")
-                self.lbl_coast_stat.setStyleSheet("color: #595FF7;")
+                self.lbl_coast_stat.setStyleSheet("color: #595FF7; border: none;")
                 return
                 
             if not HAS_GEOPANDAS: 
@@ -574,20 +507,18 @@ class Modul4Mesh(QWidget):
                             
             self.file_ldb = ldb_path
             self.lbl_coast_stat.setText(f"✓ SHP Converted")
-            self.lbl_coast_stat.setStyleSheet("color: #42E695;")
+            self.lbl_coast_stat.setStyleSheet("color: #42E695; border: none;")
             
             js = f"addGeoJSON({gdf.to_json()}, '#8FC9DC');"
             self.web_mesh.page().runJavaScript(js)
             
             self.log_mesh.append(f"✅ Vektor dikonversi sukses menjadi {os.path.basename(ldb_path)} (Format Delft3D).")
-            QMessageBox.information(self, "Konversi Sukses", "Shapefile berhasil dikonversi dan disuntikkan ke dalam Leaflet.")
             
         except Exception as e:
             logger.error(f"[LDB IMPORT] {str(e)}\n{traceback.format_exc()}")
             self.log_mesh.append(f"❌ Gagal memproses Coastline: {str(e)}")
 
     def update_inner_bbox(self, d: dict) -> None: 
-        """Ditangkap dari alat gambar kotak pada peta Leaflet."""
         self._syncing = True
         app_state.update('inner_bbox', d)
         self.lbl_inner_bbox.setText("✓ Area Mikro (Inner) Tersimpan")
@@ -603,7 +534,6 @@ class Modul4Mesh(QWidget):
         self._syncing = False
 
     def update_mesh_transect(self, d: list) -> None: 
-        """Ditangkap dari alat gambar garis poli (Polyline) pada peta Leaflet."""
         self._syncing = True
         app_state.update('transect', d)
         self.tbl_trans.setRowCount(len(d))
@@ -617,7 +547,6 @@ class Modul4Mesh(QWidget):
         self._syncing = False
 
     def manual_bbox_update(self) -> None:
-        """Dipicu HANYA jika tombol 'Update Area Mikro' diklik."""
         try:
             n = float(self.tbl_bbox.item(0,0).text())
             s = float(self.tbl_bbox.item(1,0).text())
@@ -636,7 +565,6 @@ class Modul4Mesh(QWidget):
             pass
 
     def manual_transect_update(self) -> None:
-        """Dipicu HANYA jika tombol 'Update Line Profiles' diklik."""
         coords = []
         for i in range(self.tbl_man.rowCount()):
             try:
@@ -652,11 +580,6 @@ class Modul4Mesh(QWidget):
             self.log_mesh.append("[SYSTEM] Garis Transek berhasil diperbarui secara manual.")
 
     def update_sliders(self) -> None:
-        """
-        [ENTERPRISE BUG-FIX] Kalkulasi Cost Numerik yang Akurat.
-        Memisahkan estimasi jumlah node antara area Macro (kasar) dan Micro (halus)
-        agar sistem tidak asal menebak beban HPC 'BERAT' pada area yang dominan kasar.
-        """
         max_r = self.sld_fmax.value()
         min_r = self.sld_fmin.value()
         
@@ -668,40 +591,27 @@ class Modul4Mesh(QWidget):
         macro = app_state.get('mesh_bbox')
         micro = app_state.get('inner_bbox')
         
-        # Konversi sederhana derajat ke meter: 1 deg = ~111,320 meter ekuator
         macro_area_m2 = 0
         micro_area_m2 = 0
         
-        if macro:
-            macro_area_m2 = abs(macro['E'] - macro['W']) * 111320 * abs(macro['N'] - macro['S']) * 110540 
+        if macro: macro_area_m2 = abs(macro['E'] - macro['W']) * 111320 * abs(macro['N'] - macro['S']) * 110540 
+        if micro: micro_area_m2 = abs(micro['E'] - micro['W']) * 111320 * abs(micro['N'] - micro['S']) * 110540
             
-        if micro:
-            micro_area_m2 = abs(micro['E'] - micro['W']) * 111320 * abs(micro['N'] - micro['S']) * 110540
+        if macro_area_m2 == 0 and micro_area_m2 == 0: macro_area_m2 = 25000000 
             
-        # Jika belum ada AOI sama sekali, gunakan angka default (Contoh: area 5x5 km)
-        if macro_area_m2 == 0 and micro_area_m2 == 0:
-            macro_area_m2 = 25000000 
-            
-        # Kurangi area luar agar tidak dihitung dua kali
         outer_area_m2 = max(0, macro_area_m2 - micro_area_m2)
-        
-        # Hitung jumlah titik (nodes)
         nodes_outer = outer_area_m2 / (max_r ** 2) if max_r > 0 else 0
         nodes_inner = micro_area_m2 / (min_r ** 2) if min_r > 0 else 0
         
         est_nodes = nodes_outer + nodes_inner
         
         if est_nodes < 30000:
-            status, color = "🟢 Ringan (PC/Laptop Biasa)", "#42E695"
-            bg, brd = "rgba(66, 230, 149, 0.1)", "#42E695"
+            status, color, bg, brd = "🟢 Ringan (PC/Laptop Biasa)", "#42E695", "rgba(66, 230, 149, 0.1)", "#42E695"
         elif est_nodes < 100000:
-            status, color = "🟡 Menengah (Workstation i7/Ryzen 7)", "#F7C159"
-            bg, brd = "rgba(247, 193, 89, 0.1)", "#F7C159"
+            status, color, bg, brd = "🟡 Menengah (Workstation i7/Ryzen 7)", "#F7C159", "rgba(247, 193, 89, 0.1)", "#F7C159"
         else:
-            status, color = "🔴 BERAT (Membutuhkan HPC/Superkomputer)", "#FC3F4D"
-            bg, brd = "rgba(252, 63, 77, 0.1)", "#FC3F4D"
+            status, color, bg, brd = "🔴 BERAT (Membutuhkan HPC/Superkomputer)", "#FC3F4D", "rgba(252, 63, 77, 0.1)", "#FC3F4D"
             
-        # Mengubah luas dari meter persegi ke kilometer persegi untuk UI
         total_km2 = max(macro_area_m2, micro_area_m2) / 1e6
         self.lbl_cost.setText(f"Cakupan Geografis: {total_km2:.1f} km² | Beban: ~{int(est_nodes):,} Titik Komputasi (Nodes) | {status}")
         self.lbl_cost.setStyleSheet(f"color: {color}; font-weight:bold; font-size:13px; background-color:{bg}; padding: 12px; border-radius: 8px; border: 1px solid {brd};")
@@ -709,7 +619,6 @@ class Modul4Mesh(QWidget):
     # --------------------------------------------------------------------------
     # THREAD EXECUTION
     # --------------------------------------------------------------------------
-
     def run_doc_calc(self) -> None:
         if hasattr(self, 'doc_w') and self.doc_w.isRunning(): return
         
