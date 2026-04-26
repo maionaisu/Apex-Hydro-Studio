@@ -18,21 +18,15 @@ class WebBridge(QObject):
     
     @pyqtSlot(str)
     def receive_bbox(self, data_json: str) -> None: 
-        """
-        Menerima koordinat Bounding Box dari kotak yang digambar user di Leaflet.
-        """
         try:
-            # [ENTERPRISE SAFEGUARD]: Validasi String Kosong
             if not data_json or not data_json.strip():
                 raise ValueError("Menerima payload JSON kosong dari UI Peta.")
 
             parsed_data = json.loads(data_json)
             
-            # Failsafe Guard: Tipe data Bounding Box harus selalu berupa Dictionary
             if not isinstance(parsed_data, dict):
                 raise ValueError(f"Payload Bounding Box harus berupa dictionary, menerima: {type(parsed_data)}")
                 
-            # Failsafe Guard: Validasi Kunci Absolut
             required_keys = {'N', 'S', 'E', 'W'}
             if not required_keys.issubset(parsed_data.keys()):
                 raise ValueError(f"Payload kehilangan kunci koordinat wajib. Memiliki: {list(parsed_data.keys())}")
@@ -47,16 +41,12 @@ class WebBridge(QObject):
             
     @pyqtSlot(str)
     def receive_transect(self, data_json: str) -> None: 
-        """
-        Menerima deretan koordinat (Lat/Lon) dari garis Polyline yang digambar user di Leaflet.
-        """
         try:
             if not data_json or not data_json.strip():
                 raise ValueError("Menerima payload JSON kosong dari UI Peta.")
 
             parsed_data = json.loads(data_json)
             
-            # Failsafe Guard: Tipe data Transect harus berupa List / Array
             if not isinstance(parsed_data, list):
                 raise ValueError(f"Payload Transek harus berupa list/array, menerima: {type(parsed_data)}")
                 
