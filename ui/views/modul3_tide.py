@@ -1,5 +1,5 @@
 # ==============================================================================
-# APEX NEXUS TIER-0: MODUL 3 - TIDAL HARMONIX SYNTHESIZER (UI VIEW)
+# APEX NEXUS TIER-0: MODUL 3 - TIDAL HARMONIC SYNTHESIZER (UI VIEW)
 # ==============================================================================
 import os
 import logging
@@ -35,7 +35,7 @@ class Modul3Tide(QWidget):
         tc_layout.setContentsMargins(20, 20, 20, 20)
         tc_layout.setSpacing(8)
         
-        t = QLabel("Tidal Harmonix Synthesizer")
+        t = QLabel("Tidal Harmonic Synthesizer")
         t.setStyleSheet("font-size: 26px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px; border: none;")
         
         d = QLabel(
@@ -55,7 +55,7 @@ class Modul3Tide(QWidget):
         # Splitter Transparan
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
-        splitter.setStyleSheet("QSplitter::handle { background-color: transparent; height: 12px; }")
+        splitter.setStyleSheet("QSplitter::handle { background-color: transparent; height: 5px; }")
 
         # --- 1. TOP SEGMENT (FLEX SCROLL CONTROLS) ---
         # Membungkus kontrol ke dalam FlexScrollArea untuk mencegah "cemet"
@@ -91,7 +91,7 @@ class Modul3Tide(QWidget):
         
         grp1.add_layout(g1)
         
-        self.btn_ext = ModernButton("⚡ JALANKAN KALKULASI LSHA", "primary")
+        self.btn_ext = ModernButton("⚡ CALCULATE LSHA", "primary")
         self.btn_ext.clicked.connect(self.run_tide_analyzer)
         grp1.add_widget(self.btn_ext)
         
@@ -147,7 +147,7 @@ class Modul3Tide(QWidget):
 
         grp2.add_layout(g2)
         
-        self.btn_gen = ModernButton("🌊 TULIS & KUNCI FORCING BOUNDARY (.bc)", "primary")
+        self.btn_gen = ModernButton("🌊 TULIS DAN KUNCI FORCING BOUNDARY (.bc)", "primary")
         self.btn_gen.clicked.connect(self.run_tide_generator)
         grp2.add_widget(self.btn_gen)
         
@@ -176,8 +176,8 @@ class Modul3Tide(QWidget):
         
         splitter.addWidget(bot_wrap)
         
-        # Proporsi: Controls 65%, Log 35%
-        splitter.setSizes([450, 200])
+        # Proporsi: Controls 53%, Log 47%
+        splitter.setSizes([400, 350])
         main_layout.addWidget(splitter)
 
     def load_tide_file(self) -> None:
