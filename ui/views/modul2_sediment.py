@@ -10,7 +10,7 @@ import pandas as pd
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, 
                              QComboBox, QCheckBox, QLabel, QTextEdit, 
                              QFileDialog, QSplitter, QTabWidget, QFrame, 
-                             QMessageBox, QSpinBox)
+                             QMessageBox, QSpinBox, QSizePolicy)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 
@@ -37,23 +37,26 @@ class Modul2Sediment(QWidget):
         main_layout.setContentsMargins(24, 24, 24, 24)
         main_layout.setSpacing(16)
 
-        # --- HEADER ---
+        # --- HEADER COMPACT ---
         head = QVBoxLayout()
         title_container = QFrame()
-        title_container.setStyleSheet("background-color: #1E2128; border: 1px solid #3A3F4A; border-radius: 8px;")
+        title_container.setObjectName("HeaderBox")
+        # Mengunci tinggi kotak agar tidak memuai secara vertikal
+        title_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        title_container.setStyleSheet("QFrame#HeaderBox { background-color: #1E2128; border: 1px solid #3A3F4A; border-radius: 8px; }")
+        
         tc_layout = QVBoxLayout(title_container)
-        tc_layout.setContentsMargins(16, 12, 16, 12)
-        tc_layout.setSpacing(4)
+        tc_layout.setContentsMargins(16, 8, 16, 8) # Padding atas-bawah sangat dipangkas
+        tc_layout.setSpacing(2)
         
         t = QLabel("Spatial Sediments & Coastal Friction")
         t.setStyleSheet("font-size: 20px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px; border: none;")
         
+        # Menghapus tag <div> agar PyQt tidak menyuntikkan margin paragraf ekstra
         d = QLabel(
-            "<div style='text-align: justify; line-height: 1.4;'>"
             "Sistem pemetaan tingkat lanjut untuk distribusi densitas spasial Trachytope pada vegetasi Mangrove, Lamun, "
             "dan Terumbu Karang. Mendukung Kriging, Filled Contours HD, dan <b>Land Boundary Masking</b> untuk memotong "
             "data spasial agar menyesuaikan garis daratan secara otomatis."
-            "</div>"
         )
         d.setStyleSheet("color: #9CA3AF; font-size: 12px; border: none;")
         d.setWordWrap(True)
@@ -148,7 +151,7 @@ class Modul2Sediment(QWidget):
         btn_load.clicked.connect(lambda checked, m=mode_type: self.load_file(m))
         grp1.add_widget(btn_load)
         
-        lbl_info = QLabel("<div style='text-align: justify; line-height: 1.5;'>Format Input: Kolom X (Longitude), Y (Latitude), dan Target (Z/D50).</div>")
+        lbl_info = QLabel("Format Input: Kolom X (Longitude), Y (Latitude), dan Target (Z/D50).")
         lbl_info.setStyleSheet("color: #9CA3AF; font-size: 12px; border: none;")
         lbl_info.setWordWrap(True)
         grp1.add_widget(lbl_info)
