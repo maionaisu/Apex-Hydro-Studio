@@ -2,7 +2,9 @@
 # APEX NEXUS TIER-0: DIMR ENGINE EXECUTOR (QProcess)
 # ==============================================================================
 import os
+import sys
 import logging
+import subprocess
 from PyQt6.QtCore import QObject, QProcess, pyqtSignal, QProcessEnvironment
 
 logger = logging.getLogger(__name__)
@@ -11,10 +13,9 @@ class DIMREngineManager(QObject):
     """
     [TIER-0] Manages the execution of the Deltares DIMR engine via QProcess.
     Upgraded with: 
-    1. Anti-Tearing Buffered Line Reader (canReadLine).
-    2. Graceful Termination Logic to prevent NetCDF file corruption.
+    1. Windows Taskkill Tree (/T /F) to slaughter orphaned zombie processes (dflowfm.exe/swan.exe).
+    2. Anti-Tearing Buffered Line Reader (canReadLine).
     3. Process Environment Isolation.
-    4. [HARDENED] PyQt6 strict program & argument setters.
     """
     stdout_signal = pyqtSignal(str)
     stderr_signal = pyqtSignal(str)
@@ -34,7 +35,6 @@ class DIMREngineManager(QObject):
     def start_execution(self, bat_path: str, working_dir: str, config_file: str = "dimr_config.xml") -> None:
         """
         Menginisiasi kalkulasi D-Flow FM & SWAN (DIMR/Standalone).
-        Dijaga ketat oleh guard rel I/O dan State Concurrency.
         """
         # 1. State Guard: Cegah double execution
         if self.process.state() != QProcess.ProcessState.NotRunning:
@@ -58,8 +58,6 @@ class DIMREngineManager(QObject):
         
         self.process.setWorkingDirectory(working_dir)
         
-        # [ENTERPRISE FIX]: Menggunakan standard PyQt6 yang ketat
-        # Mencegah injeksi string argumen yang korup pada OS Windows
         self.process.setProgram(bat_path)
         self.process.setArguments([config_file])
         
@@ -68,20 +66,30 @@ class DIMREngineManager(QObject):
 
     def abort_execution(self) -> None:
         """
-        [BUG-FIX]: Mencegah korupsi NetCDF (.nc) akibat Force Kill.
-        Mengirimkan Graceful SIGTERM terlebih dahulu, jika gagal dalam 3 detik, baru SIGKILL.
+        [CRITICAL BUG-FIX]: Mencegah Orphaned Process (Zombie C++ Nodes) di Windows.
+        File .bat menjalankan cmd.exe, yang kemudian menjalankan dflowfm.exe.
+        Jika kita hanya memanggil process.kill(), hanya cmd.exe yang mati. dflowfm.exe akan 
+        terus menyala secara gaib dan memakan 100% CPU.
+        Kita gunakan perintah 'taskkill /T /F /PID' OS-level untuk membantai seluruh tree.
         """
         if self.process.state() != QProcess.ProcessState.NotRunning:
-            logger.warning("[DIMR] Memulai prosedur Terminasi Aman (Graceful Termination)...")
+            logger.warning("[DIMR] Memulai prosedur Pemusnahan Pohon Proses (Kill Tree)...")
+            self.stdout_signal.emit("<span style='color:#FC3F4D;'>[SYSTEM] Meluncurkan SIGKILL ke seluruh pohon komputasi...</span>")
             
-            # Meminta DIMR untuk menutup I/O file NetCDF dengan aman
-            self.process.terminate() 
+            # Ekstrak Process ID (PID) dari induk (cmd.exe)
+            pid = self.process.processId()
             
-            # Menunggu 3 detik (3000 ms) agar thread C++ menutup resource
-            if not self.process.waitForFinished(3000):
-                logger.warning("[DIMR] C++ Engine tidak merespon/Hang. Memaksa Force Kill!")
-                # Tembak mati jika membandel
-                self.process.kill() 
+            if sys.platform == 'win32':
+                try:
+                    # /F = Force, /T = Tree (Membunuh child process seperti dflowfm.exe & swan.exe)
+                    subprocess.call(['taskkill', '/F', '/T', '/PID', str(pid)], 
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception as e:
+                    logger.error(f"[DIMR] Gagal mengeksekusi taskkill: {e}")
+                    self.process.kill() # Fallback ke native Qt kill
+            else:
+                # Untuk Linux/Mac, kill() biasanya sudah mengirim SIGKILL ke seluruh process group
+                self.process.kill()
 
     def handle_stdout(self) -> None:
         """
@@ -103,7 +111,7 @@ class DIMREngineManager(QObject):
                 self.stderr_signal.emit(line_str)
 
     def handle_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
-        """Ditangkap saat proses selesai secara alami atau di-kill."""
+        """Ditangkap saat proses selesai secara alami atau dibantai (Taskkill)."""
         logger.info(f"[DIMR] Eksekusi ditutup dengan kode: {exit_code} | Status: {exit_status.name}")
         
         # Terkadang proses mati karena Crash C++ yang lolos dari exit_code = 0
