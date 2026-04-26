@@ -1,0 +1,3 @@
+## 2024-05-20 - [Optimize Nearest Neighbor Search Distance Calculation]
+**Learning:** Computing `np.hypot(dx, dy)` across large arrays (like unstructured mesh node coordinates) is computationally expensive because it calculates the square root for every element, which is an O(N) operation.
+**Action:** When searching for the nearest neighbor via Euclidean distance, compute the squared distance `(dx**2 + dy**2)`, find the minimum value using `np.nanargmin`, and then apply `np.sqrt()` only to that single minimum value. This avoids the O(N) overhead of `np.hypot` while achieving exactly the same result.
