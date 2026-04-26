@@ -1,109 +1,105 @@
 # ==============================================================================
-# APEX NEXUS TIER-0: TIDE LEAST SQUARES HARMONIC ANALYSIS (LSHA) ENGINE
+# APEX NEXUS TIER-0: TIDAL HARMONIC WORKERS (QThread)
 # ==============================================================================
+import os
 import logging
 import traceback
+import copy
 import pandas as pd
-import numpy as np
-from utils.math_accel import solve_lsha
+from PyQt6.QtCore import QThread, pyqtSignal
+
+from engines.tide_lsha import TideAnalyzerEngine
 
 logger = logging.getLogger(__name__)
 
-class TideAnalyzerEngine:
+class TideAnalyzerWorker(QThread):
     """
-    Tier-0 Execution Engine for Tidal Harmonic Constituent Extraction.
-    Upgraded with:
-    1. Rayleigh Criterion Guard (Dynamic Constituent Rejection).
-    2. Corrected Astronomical Frequencies (SA & SSA).
-    3. C-Contiguous Array Enforcement (Prevents C++/Numba memory segfaults).
-    4. Strict Date/Time Parsing for messy sensor data.
+    [TIER-0] Background Worker for Tidal Harmonic Extraction.
+    Delegates heavy LSHA matrix computation to the optimized TideAnalyzerEngine.
+    Thread-safe data isolation implemented.
     """
-    
-    @staticmethod
-    def extract_harmonics(df: pd.DataFrame, col_time: str, col_z: str) -> tuple:
+    log_signal = pyqtSignal(str)
+    result_signal = pyqtSignal(dict)
+    finished_signal = pyqtSignal(str)
+
+    def __init__(self, df: pd.DataFrame, col_time: str, col_z: str):
+        super().__init__()
+        # [CRITICAL GUARD]: Deep copy untuk mencegah Race Condition dengan UI Thread
+        self.df = df.copy() if df is not None else None
+        self.col_time = col_time
+        self.col_z = col_z
+
+    def run(self) -> None:
         try:
-            logger.info("[LSHA] Memulai analisis harmonik pasang surut tingkat lanjut...")
+            self.log_signal.emit("■ Inisiasi Ekstraksi Least Squares Harmonic Analysis (LSHA)...")
             
-            # 1. Strict Validation, De-duplication, & Pre-processing
-            df_clean = df.dropna(subset=[col_time, col_z]).copy()
+            if self.df is None or self.df.empty:
+                raise ValueError("DataFrame observasi dari UI kosong atau tidak terdefinisi.")
             
-            # [ENTERPRISE FIX]: Robust Datetime Parsing
-            # Mencoba mengurai waktu, menggunakan format mixed/dayfirst agar data sensor lokal tidak kacau.
-            try:
-                df_clean['parsed_time'] = pd.to_datetime(df_clean[col_time], format='mixed', dayfirst=True)
-            except Exception:
-                df_clean['parsed_time'] = pd.to_datetime(df_clean[col_time], errors='coerce')
+            # Panggilan ke engine fisika Tier-0
+            msl, constituents = TideAnalyzerEngine.extract_harmonics(self.df, self.col_time, self.col_z)
+            
+            self.log_signal.emit("■ Memecah Matriks Regresi Linear Inversi (SVD)...")
+            self.log_signal.emit(f"  ├ MSL (Z0): {msl:.4f} m")
+            
+            for name, val in constituents.items():
+                self.log_signal.emit(f"  ├ {name.ljust(3)} -> Amp: {val['amp']:.4f}m, Phase: {val['pha']:.2f}°")
                 
-            df_clean['parsed_z'] = pd.to_numeric(df_clean[col_z], errors='coerce')
-            
-            df_clean = df_clean.dropna(subset=['parsed_time', 'parsed_z']).sort_values('parsed_time')
-            df_clean = df_clean.drop_duplicates(subset=['parsed_time'])
-            
-            # Z-Score Outlier Rejection
-            z_mean_raw = df_clean['parsed_z'].mean()
-            z_std_raw = df_clean['parsed_z'].std()
-            if z_std_raw > 0:
-                df_clean = df_clean[np.abs(df_clean['parsed_z'] - z_mean_raw) <= (4 * z_std_raw)]
-
-            if len(df_clean) < 24:
-                raise ValueError(f"Data observasi tidak memadai (Tersedia: {len(df_clean)} jam, Syarat: >= 24 jam).")
-                
-            # Konversi waktu ke jam relatif
-            t_hours_raw = (df_clean['parsed_time'] - df_clean['parsed_time'].iloc[0]).dt.total_seconds().values / 3600.0
-            z_raw = df_clean['parsed_z'].values
-            
-            data_duration_hours = t_hours_raw[-1] - t_hours_raw[0]
-            
-            # 2. Konstanta Frekuensi Sudut
-            ALL_FREQS = {
-                'M2': 0.505868,  'S2': 0.523599,  'N2': 0.496367,
-                'K1': 0.262516,  'O1': 0.243352,  'P1': 0.261083,
-                'SA': 0.000717,  'SSA': 0.001434 
-            }
-            
-            # 3. Kriteria Rayleigh
-            target_freqs = {}
-            for name, freq in ALL_FREQS.items():
-                if name in ['SA', 'SSA'] and data_duration_hours < 4000:
-                    logger.warning(f"[LSHA] Kriteria Rayleigh Triggered: Durasi ({data_duration_hours:.1f}j) terlalu pendek untuk '{name}'.")
-                    continue
-                target_freqs[name] = freq
-                
-            # 4. Matrix Pre-Centering
-            z_mean_stable = np.mean(z_raw)
-            z_centered_raw = z_raw - z_mean_stable
-            
-            # [CRITICAL C++ BINDING FIX]: Ensure arrays are contiguous in memory
-            # Jika Pandas mengembalikan slice/view memori yang terfragmentasi, modul C++/Numba
-            # solve_lsha akan memicu Fatal Segmentation Fault / App Crash.
-            t_hours = np.ascontiguousarray(t_hours_raw, dtype=np.float64)
-            z_centered = np.ascontiguousarray(z_centered_raw, dtype=np.float64)
-            omegas_array = np.ascontiguousarray(list(target_freqs.values()), dtype=np.float64)
-            
-            # 5. Eksekusi Numba-Accelerated LSHA Solver
-            res = solve_lsha(t_hours, z_centered, omegas_array)
-            
-            if res is None or len(res) == 0:
-                raise RuntimeError("LSHA Solver C++ mengembalikan hasil yang kosong/gagal (Matrix Deficient).")
-
-            # 6. Rekonstruksi Amplitudo dan Fase
-            msl = res[0] + z_mean_stable
-            
-            constituents = {name: {'amp': 0.0, 'pha': 0.0} for name in ALL_FREQS.keys()}
-            
-            for i, name in enumerate(target_freqs.keys()):
-                A_c = res[1 + 2*i]
-                A_s = res[2 + 2*i]
-                
-                amp = np.sqrt(A_c**2 + A_s**2)
-                phase = np.degrees(np.arctan2(A_s, A_c)) % 360
-                
-                constituents[name] = {'amp': float(amp), 'pha': float(phase)}
-                
-            logger.info(f"[LSHA] Ekstraksi sukses. MSL: {msl:.3f} m, Active Constituents: {list(target_freqs.keys())}")
-            return msl, constituents
+            logger.info("[TIDE WORKER] LSHA Extraction successfully finished.")
+            self.result_signal.emit(constituents)
+            self.finished_signal.emit("SUCCESS")
             
         except Exception as e:
-            error_msg = f"[FATAL] Ekstraksi LSHA gagal: {str(e)}\n{traceback.format_exc()}"
-            logger.error(error_msg)
-            raise RuntimeError(f"Gagal melakukan analisis harmonik: {str(e)}") from e
+            error_details = f"{str(e)}\n{traceback.format_exc()}"
+            logger.error(f"[FATAL] Tide Analyzer Worker Error: {error_details}")
+            self.log_signal.emit(f"❌ Error Analisis Pasut: {str(e)}")
+            self.finished_signal.emit("ERROR")
+
+
+class TideGeneratorWorker(QThread):
+    """
+    [TIER-0] Background Worker for generating DELFT3D-FM Astronomic Boundary files (.bc).
+    """
+    finished_signal = pyqtSignal(str)
+
+    def __init__(self, constituents: dict, out_dir: str, t_start: str, t_end: str):
+        super().__init__()
+        self.constituents = copy.deepcopy(constituents) if constituents else {}
+        self.out_dir = os.path.abspath(out_dir)
+        self.t_start = t_start
+        self.t_end = t_end
+
+    def run(self) -> None:
+        try:
+            if not self.constituents:
+                raise ValueError("Kamus parameter konstanta harmonik kosong. Jalankan LSHA terlebih dahulu.")
+                
+            if not os.path.exists(self.out_dir): 
+                os.makedirs(self.out_dir, exist_ok=True)
+                
+            bc_file = os.path.join(self.out_dir, "apex_forcing.bc")
+            
+            with open(bc_file, "w", encoding="utf-8") as f:
+                f.write(f"# APEX NEXUS TIER-0 FORCING METADATA\n")
+                f.write(f"# SIMULATION TIME WINDOW: {self.t_start} TO {self.t_end}\n")
+                f.write(f"# BOUNDARY TYPE: ASTRONOMIC GENERATED VIA LSHA\n\n")
+                
+                f.write("[forcing]\n")
+                f.write("Name                            = South_Ocean_Boundary\n")
+                f.write("Function                        = astronomic\n")
+                f.write("Quantity                        = astronomic component\n")
+                f.write("Unit                            = m\n")
+                
+                for const, values in self.constituents.items():
+                    amp = float(values['amp'])
+                    pha = float(values['pha'])
+                    
+                    if amp > 0.0001: 
+                        f.write(f"{const.ljust(4)} {amp:.6f}  {pha:.2f}\n")
+                        
+            logger.info(f"[TIDE WORKER] Boundary Condition (.bc) file generated: {bc_file}")
+            self.finished_signal.emit(bc_file)
+            
+        except Exception as e: 
+            logger.error(f"[FATAL] Tide Generator Worker Error: {str(e)}\n{traceback.format_exc()}")
+            self.finished_signal.emit("")
