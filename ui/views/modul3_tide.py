@@ -5,90 +5,17 @@ import os
 import logging
 import traceback
 import pandas as pd
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
-                             QFormLayout, QComboBox, QLabel, QPushButton, 
-                             QTextEdit, QFileDialog, QGridLayout, QLineEdit, QSplitter, QMessageBox)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, 
+                             QComboBox, QLabel, QTextEdit, QFileDialog, 
+                             QGridLayout, QLineEdit, QSplitter, QMessageBox, QFrame)
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QCursor
 
+# Integrasi Enterprise Flexbox
+from ui.components.core_widgets import FlexScrollArea, CardWidget, ModernButton
 from workers.tide_worker import TideAnalyzerWorker, TideGeneratorWorker
 from core.state_manager import app_state
 
 logger = logging.getLogger(__name__)
-
-# --- ENTERPRISE QSS STYLESHEETS (FINTECH SLATE ADAPTATION) ---
-STYLE_GROUPBOX = """
-    QGroupBox {
-        background-color: #2D3139;
-        border: 1px solid #3A3F4A;
-        border-radius: 12px;
-        margin-top: 15px;
-        padding-top: 35px; /* Space lapang agar title duduk manis di dalam */
-        font-weight: 800;
-        color: #FFFFFF;
-        font-size: 14px;
-    }
-    QGroupBox::title {
-        subcontrol-origin: margin;
-        subcontrol-position: top left;
-        padding: 6px 16px;
-        background-color: transparent;
-        color: #8FC9DC;
-        top: 8px; /* Positif! Judul masuk ke dalam kotak */
-        left: 10px;
-    }
-"""
-
-STYLE_INPUTS = """
-    QComboBox, QLineEdit {
-        background-color: #1F2227;
-        border: 1px solid #3A3F4A;
-        border-radius: 8px;
-        padding: 10px 14px;
-        color: #FFFFFF;
-        font-size: 13px;
-        font-family: 'Consolas', 'Courier New', monospace; /* Monospace untuk angka agar rapi */
-    }
-    QComboBox:focus, QLineEdit:focus { border: 1px solid #595FF7; background-color: #2D3139; }
-    QComboBox::drop-down { border: none; }
-    QComboBox QAbstractItemView {
-        background-color: #2D3139;
-        color: #FFFFFF;
-        selection-background-color: #595FF7;
-        border: 1px solid #3A3F4A;
-        border-radius: 8px;
-    }
-"""
-
-STYLE_BTN_PRIMARY = """
-    QPushButton#PrimaryBtn {
-        background-color: #595FF7;
-        color: #FFFFFF;
-        border: none;
-        border-radius: 10px;
-        padding: 14px 16px;
-        font-weight: 900;
-        font-size: 14px;
-    }
-    QPushButton#PrimaryBtn:hover { background-color: #7176F8; }
-    QPushButton#PrimaryBtn:disabled { background-color: #3A3F4A; color: #6B7280; }
-"""
-
-STYLE_BTN_OUTLINE = """
-    QPushButton#OutlineBtn {
-        background-color: transparent;
-        color: #8FC9DC;
-        border: 1px solid #3A3F4A;
-        border-radius: 8px;
-        padding: 12px 16px;
-        font-weight: 800;
-        font-size: 13px;
-    }
-    QPushButton#OutlineBtn:hover { background-color: rgba(143, 201, 220, 0.1); border-color: #8FC9DC; }
-"""
-
-LABEL_STYLE = "QLabel { color: #9CA3AF; font-weight: bold; font-size: 13px; }"
-
 
 class Modul3Tide(QWidget):
     def __init__(self, parent=None):
@@ -96,84 +23,91 @@ class Modul3Tide(QWidget):
         self.setup_ui()
 
     def setup_ui(self) -> None:
-        self.setStyleSheet(f"{STYLE_GROUPBOX} {STYLE_INPUTS} {STYLE_BTN_PRIMARY} {STYLE_BTN_OUTLINE}")
-        
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(24, 24, 24, 24)
         main_layout.setSpacing(16)
 
-        # --- HEADER (FINTECH STYLE) ---
+        # --- HEADER ---
         head = QVBoxLayout()
+        title_container = QFrame()
+        title_container.setStyleSheet("background-color: #1E2128; border: 1px solid #3A3F4A; border-radius: 12px;")
+        tc_layout = QVBoxLayout(title_container)
+        tc_layout.setContentsMargins(20, 20, 20, 20)
+        tc_layout.setSpacing(8)
+        
         t = QLabel("Tidal Harmonix Synthesizer")
-        t.setStyleSheet("font-size: 26px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px;")
-        d = QLabel("Ekstraksi konstanta harmonik (Least Squares) dan generasi Boundary Condition (Astronomic) untuk simulasi kontinyu D-FLOW.")
-        d.setStyleSheet("color: #9CA3AF; font-size: 14px;")
-        head.addWidget(t)
-        head.addWidget(d)
+        t.setStyleSheet("font-size: 26px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px; border: none;")
+        
+        d = QLabel(
+            "<div style='text-align: justify; line-height: 1.6;'>"
+            "Ekstraksi konstanta harmonik (Least Squares Harmonic Analysis) dan generasi <b>Boundary Condition (Astronomic)</b> "
+            "untuk simulasi kontinyu D-FLOW FM. Modul ini dilengkapi dengan <i>Rayleigh Criterion Guard</i> dan Z-Score Outlier Rejection."
+            "</div>"
+        )
+        d.setStyleSheet("color: #9CA3AF; font-size: 13px; border: none;")
+        d.setWordWrap(True)
+        
+        tc_layout.addWidget(t)
+        tc_layout.addWidget(d)
+        head.addWidget(title_container)
         main_layout.addLayout(head)
 
-        # Splitter Layout Transparan
+        # Splitter Transparan
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
         splitter.setStyleSheet("QSplitter::handle { background-color: transparent; height: 12px; }")
 
-        # --- 1. MIDDLE SEGMENT (CONTROLS) ---
-        ctrl_widget = QWidget()
-        ctrl = QHBoxLayout(ctrl_widget)
-        ctrl.setContentsMargins(0, 10, 0, 10)
-        ctrl.setSpacing(25)
+        # --- 1. TOP SEGMENT (FLEX SCROLL CONTROLS) ---
+        # Membungkus kontrol ke dalam FlexScrollArea untuk mencegah "cemet"
+        self.scroll_ctrl = FlexScrollArea()
+        
+        # Container horizontal untuk membagi panel kiri & kanan di dalam Scroll Area
+        h_layout = QHBoxLayout()
+        h_layout.setContentsMargins(0, 0, 0, 0)
+        h_layout.setSpacing(20)
 
         # KIRI: LSHA Control
         c1 = QVBoxLayout()
-        grp1 = QGroupBox("1. Data Parser & Inversi LSHA")
+        grp1 = CardWidget("1. Data Parser & Inversi LSHA")
         
-        g1 = QFormLayout(grp1)
-        g1.setHorizontalSpacing(20)
-        g1.setVerticalSpacing(18)
-        
-        self.btn_tide_f = QPushButton("📂 Unggah File Observasi (.csv / .txt)")
-        self.btn_tide_f.setObjectName("OutlineBtn")
-        self.btn_tide_f.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_tide_f = ModernButton("📂 Unggah File Observasi (.csv / .txt)", "outline")
         self.btn_tide_f.clicked.connect(self.load_tide_file)
-        g1.addRow(self.btn_tide_f)
+        grp1.add_widget(self.btn_tide_f)
         
-        lbl_info = QLabel("Pastikan data memiliki baris header yang jelas\nuntuk waktu dan nilai elevasi air (Z).")
+        lbl_info = QLabel("Pastikan data memiliki baris header yang jelas untuk waktu dan nilai elevasi air (Z).")
         lbl_info.setStyleSheet("color: #6B7280; font-size: 12px; font-style: italic;")
-        g1.addRow("", lbl_info)
+        lbl_info.setWordWrap(True)
+        grp1.add_widget(lbl_info)
+        
+        g1 = QFormLayout()
+        g1.setHorizontalSpacing(15); g1.setVerticalSpacing(12)
         
         self.tcmb_t = QComboBox()
         self.tcmb_z = QComboBox()
         
-        l_t = QLabel("Kolom Waktu (T):"); l_t.setStyleSheet(LABEL_STYLE)
-        l_z = QLabel("Kolom Elevasi (Z):"); l_z.setStyleSheet(LABEL_STYLE)
+        label_style = "QLabel { color: #CBD5E1; font-weight: bold; font-size: 12px; border: none; }"
+        g1.addRow(QLabel("Kolom Waktu (T):", styleSheet=label_style), self.tcmb_t)
+        g1.addRow(QLabel("Kolom Elevasi (Z):", styleSheet=label_style), self.tcmb_z)
         
-        g1.addRow(l_t, self.tcmb_t)
-        g1.addRow(l_z, self.tcmb_z)
+        grp1.add_layout(g1)
         
-        g1.addRow("", QLabel("")) # Spacer
-        
-        self.btn_ext = QPushButton("⚡ JALANKAN KALKULASI LSHA")
-        self.btn_ext.setObjectName("PrimaryBtn")
-        self.btn_ext.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_ext = ModernButton("⚡ JALANKAN KALKULASI LSHA", "primary")
         self.btn_ext.clicked.connect(self.run_tide_analyzer)
-        g1.addRow(self.btn_ext)
+        grp1.add_widget(self.btn_ext)
         
         c1.addWidget(grp1)
         c1.addStretch()
-        ctrl.addLayout(c1, stretch=4)
+        h_layout.addLayout(c1, stretch=4)
 
         # KANAN: Output Editing & Dashboard
         c2 = QVBoxLayout()
-        grp2 = QGroupBox("2. Parameter Harmonik (Hasil / Manual Override)")
-        g2_layout = QVBoxLayout(grp2)
-        g2_layout.setSpacing(15)
+        grp2 = CardWidget("2. Parameter Harmonik (Hasil / Manual Override)")
         
         # Grid Kustom untuk Dashboard Konstanta
         g2 = QGridLayout()
         g2.setHorizontalSpacing(15)
         g2.setVerticalSpacing(12)
         
-        # Header Kolom Grid
         headers = ["Konstanta", "Amp (m)", "Phase (°)", "    ", "Konstanta", "Amp (m)", "Phase (°)"]
         for col, text in enumerate(headers):
             if text.strip():
@@ -187,20 +121,17 @@ class Modul3Tide(QWidget):
         
         for i, k in enumerate(consts):
             row = (i // 2) + 1
-            col_offset = (i % 2) * 4 # Jarak 4 kolom untuk grup sebelah kanan
+            col_offset = (i % 2) * 4 
             
-            # Badge Konstanta
             lbl_k = QLabel(k)
             lbl_k.setStyleSheet("color: #8FC9DC; font-weight: bold; font-size: 13px; background-color: #1F2227; padding: 6px 10px; border-radius: 6px; border: 1px solid #3A3F4A;")
             lbl_k.setAlignment(Qt.AlignmentFlag.AlignCenter)
             g2.addWidget(lbl_k, row, col_offset)
             
-            # Input Amplitudo
             amp = QLineEdit()
             amp.setPlaceholderText("0.0000")
             amp.setAlignment(Qt.AlignmentFlag.AlignCenter)
             
-            # Input Phase
             pha = QLineEdit()
             pha.setPlaceholderText("0.00")
             pha.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -209,25 +140,25 @@ class Modul3Tide(QWidget):
             g2.addWidget(amp, row, col_offset + 1)
             g2.addWidget(pha, row, col_offset + 2)
             
-            # Spacer kolom tengah
             if col_offset == 0:
                 spacer = QLabel("")
                 spacer.setFixedWidth(20)
                 g2.addWidget(spacer, row, 3)
 
-        g2_layout.addLayout(g2)
-        c2.addWidget(grp2)
+        grp2.add_layout(g2)
         
-        # Tombol Ekspor
-        self.btn_gen = QPushButton("🌊 TULIS & KUNCI FORCING BOUNDARY (.bc)")
-        self.btn_gen.setObjectName("PrimaryBtn")
-        self.btn_gen.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_gen = ModernButton("🌊 TULIS & KUNCI FORCING BOUNDARY (.bc)", "primary")
         self.btn_gen.clicked.connect(self.run_tide_generator)
-        c2.addWidget(self.btn_gen)
-        c2.addStretch()
+        grp2.add_widget(self.btn_gen)
         
-        ctrl.addLayout(c2, stretch=6)
-        splitter.addWidget(ctrl_widget)
+        c2.addWidget(grp2)
+        c2.addStretch()
+        h_layout.addLayout(c2, stretch=6)
+        
+        # Masukkan container horizontal ke dalam ScrollArea
+        self.scroll_ctrl.add_layout(h_layout)
+        self.scroll_ctrl.add_stretch()
+        splitter.addWidget(self.scroll_ctrl)
 
         # --- 2. BOTTOM SEGMENT (LOG CONSOLE) ---
         bot_wrap = QWidget()
@@ -240,7 +171,7 @@ class Modul3Tide(QWidget):
         
         self.log_tide = QTextEdit()
         self.log_tide.setReadOnly(True)
-        self.log_tide.setStyleSheet("background-color: #1E2128; color: #42E695; font-family: Consolas, monospace; font-size: 13px; border: 1px solid #3A3F4A; border-radius: 8px; padding: 12px;")
+        self.log_tide.setObjectName("TerminalOutput")
         bl.addWidget(self.log_tide)
         
         splitter.addWidget(bot_wrap)
@@ -259,7 +190,7 @@ class Modul3Tide(QWidget):
                 skip = 0
                 for i, l in enumerate(f):
                     if i >= 50: break
-                    if any(k in l.lower() for k in ['z(m)', 'rad1', 'water', 'date', 'time', 'elev']):
+                    if any(k in l.lower() for k in ['z(m)', 'rad1', 'water', 'date', 'time', 'elev', 'waktu']):
                         skip = i
                         break
 
@@ -267,17 +198,18 @@ class Modul3Tide(QWidget):
             self.tide_df = pd.read_csv(p, skiprows=skip, sep=separator, engine='python')
             
             cols = list(self.tide_df.columns)
-            self.tcmb_t.clear()
-            self.tcmb_z.clear()
-            self.tcmb_t.addItems(cols)
-            self.tcmb_z.addItems(cols)
+            self.tcmb_t.clear(); self.tcmb_z.clear()
+            self.tcmb_t.addItems(cols); self.tcmb_z.addItems(cols)
             
             for c in cols:
                 cl = str(c).lower()
-                if 'time' in cl or 'date' in cl or 'waktu' in cl: self.tcmb_t.setCurrentText(c)
-                if 'z' in cl or 'water' in cl or 'elev' in cl or 'val' in cl: self.tcmb_z.setCurrentText(c)
+                if any(k in cl for k in ['time', 'date', 'waktu', 'tanggal']): self.tcmb_t.setCurrentText(c)
+                if any(k in cl for k in ['z', 'water', 'elev', 'val', 'tinggi']): self.tcmb_z.setCurrentText(c)
             
             self.log_tide.append(f"▶ File observasi pasut aktif: {os.path.basename(p)}")
+            self.btn_tide_f.setText(f"✅ Dimuat: {os.path.basename(p)}")
+            self.btn_tide_f.setStyleSheet("color: #42E695; border: 1px solid #42E695;")
+            
         except Exception as e:
             logger.error(f"Gagal mem-parsing DataFrame pasut: {e}")
             self.log_tide.append(f"❌ Gagal mem-parsing file observasi: {e}")
@@ -333,11 +265,10 @@ class Modul3Tide(QWidget):
             QMessageBox.critical(
                 self, "Fatal Time Desync", 
                 "Batas waktu simulasi (Start/End) belum di-set pada Global State.\n\n"
-                "Silakan kembali ke 'Modul 1: ERA5 Synthesizer', pilih rentang waktu, lalu ekstrak/kunci datanya agar pasut ini sinkron dengan gelombang."
+                "Silakan kembali ke 'Modul 1: ERA5 Synthesizer', pilih rentang waktu kalender, lalu ekstrak/kunci datanya agar pasut ini sinkron dengan gelombang."
             )
             return
 
-        # Build dictionary from input forms
         c = {}
         for k, v in self.inp_tides.items():
             try:
@@ -355,8 +286,6 @@ class Modul3Tide(QWidget):
         
         self.log_tide.append(f"[SYNC] Merender Pasang Surut dari {t_start} hingga {t_end}")
         
-        # [NOTE]: Jika workers/tide_worker.py belum di-update untuk menerima t_start & t_end, 
-        # Anda wajib memperbaruinya agar file .bc memiliki rentang yang pas.
         self.tide_gen = TideGeneratorWorker(c, out_dir, t_start, t_end)
         
         def save_state(path: str):
