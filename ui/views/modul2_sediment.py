@@ -40,22 +40,22 @@ class Modul2Sediment(QWidget):
         # --- HEADER ---
         head = QVBoxLayout()
         title_container = QFrame()
-        title_container.setStyleSheet("background-color: #1E2128; border: 1px solid #3A3F4A; border-radius: 12px;")
+        title_container.setStyleSheet("background-color: #1E2128; border: 1px solid #3A3F4A; border-radius: 8px;")
         tc_layout = QVBoxLayout(title_container)
-        tc_layout.setContentsMargins(20, 20, 20, 20)
-        tc_layout.setSpacing(8)
+        tc_layout.setContentsMargins(16, 12, 16, 12)
+        tc_layout.setSpacing(4)
         
         t = QLabel("Spatial Sediments & Coastal Friction")
-        t.setStyleSheet("font-size: 26px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px; border: none;")
+        t.setStyleSheet("font-size: 20px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px; border: none;")
         
         d = QLabel(
-            "<div style='text-align: justify; line-height: 1.6;'>"
+            "<div style='text-align: justify; line-height: 1.4;'>"
             "Sistem pemetaan tingkat lanjut untuk distribusi densitas spasial Trachytope pada vegetasi Mangrove, Lamun, "
             "dan Terumbu Karang. Mendukung Kriging, Filled Contours HD, dan <b>Land Boundary Masking</b> untuk memotong "
             "data spasial agar menyesuaikan garis daratan secara otomatis."
             "</div>"
         )
-        d.setStyleSheet("color: #9CA3AF; font-size: 13px; border: none;")
+        d.setStyleSheet("color: #9CA3AF; font-size: 12px; border: none;")
         d.setWordWrap(True)
         
         tc_layout.addWidget(t)
@@ -216,7 +216,7 @@ class Modul2Sediment(QWidget):
         scroll_area.add_widget(grp2)
         
         # 4. Execution Button
-        btn_run = ModernButton("⚡ Generate Contours", "primary")
+        btn_run = ModernButton("⚡ Eksekusi Matriks & Generate Contours", "primary")
         btn_run.clicked.connect(lambda checked, m=mode_type: self.run_interpolation(m))
         scroll_area.add_widget(btn_run)
         
@@ -378,7 +378,7 @@ class Modul2Sediment(QWidget):
         
         def on_finished(xyz_path: str):
             btn_run.setEnabled(True)
-            btn_run.setText("⚡ Generate Contours")
+            btn_run.setText("⚡ Eksekusi Matriks & Generate Contours")
             
             if xyz_path and os.path.exists(xyz_path):
                 app_state.update('sediment_xyz', xyz_path)
