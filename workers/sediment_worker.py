@@ -15,7 +15,11 @@ class SedimentWorker(QThread):
     Meneruskan parameter land_boundary file ke dalam Engine.
     """
     log_signal = pyqtSignal(str)
-    plot_signal = pyqtSignal(str)
+    
+    # [ENTERPRISE FIX]: Sinyal wajib berbentuk tipe 'list' agar Carousel UI (modul2_sediment.py)
+    # bisa memproses multi-layered map seperti Cd, DBH, dan Densitas.
+    plot_signal = pyqtSignal(list) 
+    
     finished_signal = pyqtSignal(str)
 
     def __init__(self, df: pd.DataFrame, col_x: str, col_y: str, col_val: str, convert_ks: bool, mode_type: str, epsg: str, interp_method: str, boundary_file: str = None):
@@ -38,7 +42,8 @@ class SedimentWorker(QThread):
             if self.df is None or self.df.empty:
                 raise ValueError("DataFrame survei dari UI kosong atau tidak terdefinisi.")
                 
-            plot_path, xyz_path = SpatialSedimentEngine.process_and_interpolate(
+            # Eksekusi Adaptive Triple-Kriging dari Engine
+            plot_paths, xyz_path = SpatialSedimentEngine.process_and_interpolate(
                 df=self.df, 
                 col_x=self.col_x, 
                 col_y=self.col_y, 
@@ -54,7 +59,13 @@ class SedimentWorker(QThread):
             logger.info(f"[SEDIMENT WORKER] Interpolation successful. Exported to: {xyz_path}")
             self.log_signal.emit(f"✅ Interpolasi Contours sukses. Disimpan di: {xyz_path}")
             
-            self.plot_signal.emit(plot_path)
+            # [FAILSAFE BINDING]: Mencegah error jika Engine di masa depan 
+            # hanya mengembalikan 1 String (misal mode sedimen biasa).
+            if isinstance(plot_paths, str):
+                plot_paths = [plot_paths]
+                
+            # Sinyal dilesatkan ke update_image_carousel(paths: list) di UI
+            self.plot_signal.emit(plot_paths)
             self.finished_signal.emit(xyz_path)
             
         except Exception as e:
