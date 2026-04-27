@@ -237,16 +237,17 @@ class ApexHydroStudioApp(QMainWindow):
 
         self.nav_btns = []
         nav_items = [
-            ("⛆   Sintesis ERA5", 0), 
-            ("▤   Medan Sedimen", 1), 
-            ("🌊   Harmonik Pasut", 2), 
-            ("⚙   Orkestrator DIMR", 3), 
-            ("🚀   Eksekusi", 4), 
-            ("📊   Lab Validasi", 5)
+            ("⛆   Sintesis ERA5", "Sintesis ERA5", 0),
+            ("▤   Medan Sedimen", "Medan Sedimen", 1),
+            ("🌊   Harmonik Pasut", "Harmonik Pasut", 2),
+            ("⚙   Orkestrator DIMR", "Orkestrator DIMR", 3),
+            ("🚀   Eksekusi", "Eksekusi", 4),
+            ("📊   Lab Validasi", "Lab Validasi", 5)
         ]
         
-        for text, idx in nav_items:
+        for text, accessible_name, idx in nav_items:
             btn = QPushButton(text)
+            btn.setAccessibleName(accessible_name)
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn.setStyleSheet(self.style_nav_inactive)
             btn.clicked.connect(lambda checked, i=idx: self.switch_page(i))
@@ -257,11 +258,13 @@ class ApexHydroStudioApp(QMainWindow):
         
         h_sess = QHBoxLayout()
         btn_save = QPushButton("💾 Simpan")
+        btn_save.setAccessibleName("Simpan Session")
         btn_save.setStyleSheet("background-color: transparent; color: #8FC9DC; border: 1px solid #3A3F4A; border-radius: 8px; padding: 10px; font-weight: 800;")
         btn_save.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_save.clicked.connect(self.save_session)
         
         btn_load = QPushButton("📂 Muat")
+        btn_load.setAccessibleName("Muat Session")
         btn_load.setStyleSheet("background-color: transparent; color: #F7C159; border: 1px solid #3A3F4A; border-radius: 8px; padding: 10px; font-weight: 800;")
         btn_load.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_load.clicked.connect(self.load_session)
