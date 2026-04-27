@@ -331,16 +331,16 @@ class ApexHydroStudioApp(QMainWindow):
             self.lbl_st_tide.setText("Pasut: Kosong"); self.lbl_st_tide.setStyleSheet(STYLE_EMPTY)
 
     def save_session(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, "Ekspor Sesi Riset Apex", "", "Sesi Apex (*.apex)")
+        path, _ = QFileDialog.getSaveFileName(self, "Ekspor Sesi Riset Apex", "", "Project Apex (*.apex)")
         if path:
             if app_state.export_session(path):
-                QMessageBox.information(self, "Sukses", "Sesi proyek berhasil diekspor secara permanen.")
+                QMessageBox.information(self, "Sukses", "Proyek berhasil diekspor ke dalam memori.")
 
     def load_session(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Impor Sesi Riset Apex", "", "Sesi Apex (*.apex)")
+        path, _ = QFileDialog.getOpenFileName(self, "Impor Sesi Riset Apex", "", "Project Apex (*.apex)")
         if path:
             if app_state.import_session(path):
-                QMessageBox.information(self, "Sukses", "Sesi proyek berhasil dipulihkan ke dalam memori.")
+                QMessageBox.information(self, "Sukses", "Proyek berhasil dimuat ke dalam memori.")
 
     def setup_interactive_guides(self) -> None:
         if isinstance(self.modul1, Modul1ERA5) and isinstance(self.modul5, Modul5Execution):
