@@ -10,11 +10,11 @@ import pandas as pd
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, 
                              QComboBox, QCheckBox, QLabel, QTextEdit, 
                              QFileDialog, QSplitter, QTabWidget, QFrame, 
-                             QMessageBox, QSpinBox, QSizePolicy)
+                             QMessageBox, QSpinBox, QSizePolicy, QPushButton)
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QCursor
 
-# Integrasi Enterprise Flexbox
+# Integrasi Enterprise Flexbox & Synchronized State
 from ui.components.core_widgets import FlexScrollArea, CardWidget, ModernButton
 from workers.sediment_worker import SedimentWorker
 from core.state_manager import app_state
@@ -29,7 +29,11 @@ class Modul2Sediment(QWidget):
             'mangrove': {'df': None, 'file': None, 'boundary_file': None},
             'submerged': {'df': None, 'file': None, 'boundary_file': None}
         }
-        self.current_plot_path = None
+        
+        # [ENTERPRISE FIX]: Inisialisasi properti Carousel Multi-Image
+        self.plot_paths = []
+        self.current_plot_index = 0
+        
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -41,22 +45,19 @@ class Modul2Sediment(QWidget):
         head = QVBoxLayout()
         title_container = QFrame()
         title_container.setObjectName("HeaderBox")
-        # Mengunci tinggi kotak agar tidak memuai secara vertikal
         title_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         title_container.setStyleSheet("QFrame#HeaderBox { background-color: #1E2128; border: 1px solid #3A3F4A; border-radius: 8px; }")
         
         tc_layout = QVBoxLayout(title_container)
-        tc_layout.setContentsMargins(16, 8, 16, 8) # Padding atas-bawah sangat dipangkas
+        tc_layout.setContentsMargins(16, 8, 16, 8) 
         tc_layout.setSpacing(2)
         
         t = QLabel("Spatial Sediments & Coastal Friction")
         t.setStyleSheet("font-size: 20px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px; border: none;")
         
-        # Menghapus tag <div> agar PyQt tidak menyuntikkan margin paragraf ekstra
         d = QLabel(
-            "Sistem pemetaan tingkat lanjut untuk distribusi densitas spasial Trachytope pada vegetasi Mangrove, Lamun, "
-            "dan Terumbu Karang. Mendukung Kriging, Filled Contours HD, dan <b>Land Boundary Masking</b> untuk memotong "
-            "data spasial agar menyesuaikan garis daratan secara otomatis."
+            "Sistem pemetaan tingkat lanjut Multi-Variabel untuk Densitas Spasial Trachytope pada vegetasi Mangrove, Lamun, "
+            "dan Terumbu Karang. Mendukung Triple-Kriging (CD, DBH, Densitas) dan Land Boundary Masking secara otomatis."
         )
         d.setStyleSheet("color: #9CA3AF; font-size: 12px; border: none;")
         d.setWordWrap(True)
@@ -89,7 +90,7 @@ class Modul2Sediment(QWidget):
         self.tabs.addTab(self.tab_sediment, "1. Sedimen (Nikuradse)")
 
         self.tab_mangrove = FlexScrollArea()
-        self.build_tab_ui(self.tab_mangrove, 'mangrove', "🌲 Load Vegetasi Mangrove", False)
+        self.build_tab_ui(self.tab_mangrove, 'mangrove', "🌲 Load Survei Mangrove", False)
         self.tabs.addTab(self.tab_mangrove, "2. Mangrove")
 
         self.tab_submerged = FlexScrollArea()
@@ -114,12 +115,36 @@ class Modul2Sediment(QWidget):
         self.lbl_sed_viz.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_sed_viz.setStyleSheet("border: 2px dashed #3A3F4A; background-color:#1E2128; border-radius: 12px; color: #6B7280; font-weight: bold; font-size: 16px;")
         
-        self.btn_export_png = ModernButton("💾 Export HD Image (.png)", "outline")
+        # --- CAROUSEL CONTROLS ---
+        h_carousel = QHBoxLayout()
+        
+        self.btn_prev_plot = QPushButton("◀ Peta Sebelumnya")
+        self.btn_prev_plot.setStyleSheet("background-color: #1F2227; color: #8FC9DC; border: 1px solid #3A3F4A; border-radius: 8px; padding: 10px; font-weight: bold;")
+        self.btn_prev_plot.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_prev_plot.clicked.connect(self.show_prev_plot)
+        self.btn_prev_plot.setVisible(False)
+        
+        self.lbl_plot_counter = QLabel("")
+        self.lbl_plot_counter.setStyleSheet("color: #9CA3AF; font-weight: bold; font-size: 12px;")
+        self.lbl_plot_counter.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.btn_next_plot = QPushButton("Peta Selanjutnya ▶")
+        self.btn_next_plot.setStyleSheet(self.btn_prev_plot.styleSheet())
+        self.btn_next_plot.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_next_plot.clicked.connect(self.show_next_plot)
+        self.btn_next_plot.setVisible(False)
+        
+        self.btn_export_png = ModernButton("💾 Export Peta Ini (.png)", "outline")
         self.btn_export_png.setEnabled(False)
         self.btn_export_png.clicked.connect(self.export_current_plot)
         
+        h_carousel.addWidget(self.btn_prev_plot)
+        h_carousel.addWidget(self.btn_export_png, stretch=1)
+        h_carousel.addWidget(self.lbl_plot_counter)
+        h_carousel.addWidget(self.btn_next_plot)
+        
         tl.addWidget(self.lbl_sed_viz, stretch=1)
-        tl.addWidget(self.btn_export_png)
+        tl.addLayout(h_carousel)
         right_splitter.addWidget(top_wrap)
 
         bot_wrap = QWidget()
@@ -137,39 +162,40 @@ class Modul2Sediment(QWidget):
         bl.addWidget(self.log_sed)
         
         right_splitter.addWidget(bot_wrap)
+        
+        # [ENTERPRISE FIX]: Amankan ukuran Splitter agar Terminal Log tidak bisa di-collapse menjadi 0
         right_splitter.setSizes([600, 200]) 
+        right_splitter.setStretchFactor(0, 7)
+        right_splitter.setStretchFactor(1, 3)
         
         main_splitter.addWidget(right_splitter)
         main_splitter.setSizes([450, 650])
         main_layout.addWidget(main_splitter)
 
     def build_tab_ui(self, scroll_area: FlexScrollArea, mode_type: str, btn_text: str, show_ks: bool) -> None:
-        # 1. Dataset Loader Card
         grp1 = CardWidget("A. Dataset Survei Lapangan")
         
         btn_load = ModernButton(btn_text, "outline")
         btn_load.clicked.connect(lambda checked, m=mode_type: self.load_file(m))
         grp1.add_widget(btn_load)
         
-        lbl_info = QLabel("Format Input: Kolom X (Longitude), Y (Latitude), dan Target (Z/D50).")
+        lbl_info = QLabel("Pilih target utama (Z/D50/Cd_Average). Kolom DBH dan Densitas (jika ada) akan dideteksi otomatis untuk Triple-Kriging.")
         lbl_info.setStyleSheet("color: #9CA3AF; font-size: 12px; border: none;")
         lbl_info.setWordWrap(True)
         grp1.add_widget(lbl_info)
         scroll_area.add_widget(grp1)
         
-        # 2. Boundary / Masking Card (NEW)
         grp3 = CardWidget("B. Land Boundary / Masking (Opsional)")
-        btn_load_bnd = ModernButton("🗺️ Load AOI Poligon (.shp / .geojson)", "outline")
+        btn_load_bnd = ModernButton("🗺️ Load AOI Poligon (.shp / .gpkg)", "outline")
         btn_load_bnd.clicked.connect(lambda checked, m=mode_type: self.load_boundary_file(m))
         grp3.add_widget(btn_load_bnd)
         
-        lbl_bnd = QLabel("Gunakan file SHP Polygon area lautan (AOI) Anda untuk memotong kontur agar tidak masuk ke daratan.")
+        lbl_bnd = QLabel("Gunakan GPKG/SHP untuk memotong (masking) kontur agar tidak diekstrapolasi ke luar area secara liar.")
         lbl_bnd.setStyleSheet("color: #9CA3AF; font-size: 11px; border: none;")
         lbl_bnd.setWordWrap(True)
         grp3.add_widget(lbl_bnd)
         scroll_area.add_widget(grp3)
         
-        # 3. Mapper Configuration Card
         grp2 = CardWidget("C. Konfigurasi Interpolasi (Kriging)")
         g2 = QFormLayout()
         g2.setHorizontalSpacing(15); g2.setVerticalSpacing(12)   
@@ -201,7 +227,7 @@ class Modul2Sediment(QWidget):
         
         g2.addRow(QLabel("Kolom X (Lon):", styleSheet=label_style), cmb_x)
         g2.addRow(QLabel("Kolom Y (Lat):", styleSheet=label_style), cmb_y)
-        g2.addRow(QLabel("Kolom Target:", styleSheet=label_style), cmb_val)
+        g2.addRow(QLabel("Kolom Utama:", styleSheet=label_style), cmb_val)
         
         line2 = QFrame(); line2.setFrameShape(QFrame.Shape.HLine); line2.setStyleSheet("background-color: #3A3F4A;")
         g2.addRow(line2)
@@ -218,8 +244,7 @@ class Modul2Sediment(QWidget):
         grp2.add_layout(g2)
         scroll_area.add_widget(grp2)
         
-        # 4. Execution Button
-        btn_run = ModernButton("⚡ Eksekusi Matriks & Generate Contours", "primary")
+        btn_run = ModernButton("⚡ Eksekusi Matriks Multi-Layer", "primary")
         btn_run.clicked.connect(lambda checked, m=mode_type: self.run_interpolation(m))
         scroll_area.add_widget(btn_run)
         
@@ -239,7 +264,7 @@ class Modul2Sediment(QWidget):
         spn_header.valueChanged.connect(lambda v, m=mode_type: self.on_sheet_or_header_changed(m))
 
     def load_boundary_file(self, mode_type: str) -> None:
-        p, _ = QFileDialog.getOpenFileName(self, "Buka Poligon Batas (AOI)", "", "Shapefile/GeoJSON (*.shp *.geojson *.json)")
+        p, _ = QFileDialog.getOpenFileName(self, "Buka Poligon Batas (AOI)", "", "Shapefile/GeoPackage (*.shp *.gpkg *.geojson)")
         if not p: return
         
         self.tab_data[mode_type]['boundary_file'] = p
@@ -262,6 +287,7 @@ class Modul2Sediment(QWidget):
         
         try:
             if p.endswith('.xlsx'):
+                # [ENTERPRISE FIX]: Robust Pandas Engine Error Handler
                 with pd.ExcelFile(p) as xl:
                     sheet_names = xl.sheet_names
                 
@@ -282,7 +308,8 @@ class Modul2Sediment(QWidget):
                 self.load_sheet_data(mode_type, None, 0)
                 
         except Exception as e:
-            self.log_sed.append(f"❌ Gagal memuat file untuk {mode_type}: {str(e)}")
+            logger.error(f"Gagal memuat struktur file: {e}")
+            self.log_sed.append(f"❌ Gagal memuat struktur file untuk {mode_type}: {str(e)}")
 
     def on_sheet_or_header_changed(self, mode_type: str) -> None:
         cmb_sheet = getattr(self, f"cmb_sheet_{mode_type}")
@@ -301,7 +328,8 @@ class Modul2Sediment(QWidget):
             if p.endswith('.xlsx') and sheet_name and sheet_name != "CSV File Aktif":
                 df = pd.read_excel(p, sheet_name=sheet_name, header=header_row)
             else:
-                df = pd.read_csv(p, header=header_row)
+                # Optimized engine for CSV parsing
+                df = pd.read_csv(p, header=header_row, engine='c')
                 
             self.tab_data[mode_type]['df'] = df
             cols = [str(c) for c in df.columns]
@@ -312,6 +340,11 @@ class Modul2Sediment(QWidget):
             
             cmb_x.blockSignals(True); cmb_y.blockSignals(True); cmb_v.blockSignals(True)
             cmb_x.clear(); cmb_y.clear(); cmb_v.clear()
+            
+            has_cd_avg = 'Cd_Average' in cols
+            if 'CDx' in cols and 'CDy' in cols and not has_cd_avg:
+                cols.append('Cd_Average')
+                
             cmb_x.addItems(cols); cmb_y.addItems(cols); cmb_v.addItems(cols)
             cmb_x.blockSignals(False); cmb_y.blockSignals(False); cmb_v.blockSignals(False)
             
@@ -319,7 +352,7 @@ class Modul2Sediment(QWidget):
                 cl = str(c).lower()
                 if 'lon' in cl or 'x' in cl or 'easting' in cl: cmb_x.setCurrentText(c)
                 if 'lat' in cl or 'y' in cl or 'northing' in cl: cmb_y.setCurrentText(c)
-                if any(k in cl for k in ['d50', 'sedimen', 'val', 'friction', 'dens', 'z', 'target']): 
+                if any(k in cl for k in ['d50', 'sedimen', 'val', 'friction', 'dens', 'z', 'target', 'cd_average']): 
                     cmb_v.setCurrentText(c)
                 
             sht_log = f"Sheet '{sheet_name}'" if sheet_name else "CSV"
@@ -327,10 +360,11 @@ class Modul2Sediment(QWidget):
             
         except Exception as e:
             logger.warning(f"Gagal memuat subset data: {e}")
+            self.log_sed.append(f"❌ Kesalahan pemisahan data: {e}")
 
     def run_interpolation(self, mode_type: str) -> None:
         if hasattr(self, 'sed_w') and self.sed_w.isRunning():
-            QMessageBox.warning(self, "Konflik", "Proses interpolasi sedang berjalan.")
+            QMessageBox.warning(self, "Konflik", "Proses interpolasi spasial sedang berjalan secara Asinkron.")
             return
 
         df = self.tab_data[mode_type]['df']
@@ -348,11 +382,11 @@ class Modul2Sediment(QWidget):
         btn_run = getattr(self, f"btn_run_{mode_type}")
         
         if not col_x or not col_y or not col_val:
-            QMessageBox.critical(self, "Validasi Gagal", "Konfigurasi kolom tidak lengkap.")
+            QMessageBox.critical(self, "Validasi Gagal", "Konfigurasi kolom matriks tidak lengkap.")
             return
         
-        btn_run.setEnabled(False)
-        btn_run.setText("⏳ Sedang Mengekstrak Matriks Spasial...")
+        # [ENTERPRISE FIX]: Sinkronisasi dengan ModernButton.set_loading dari core_widgets
+        btn_run.set_loading(True, "⏳ Mengekstrak Matriks Multi-Layer...")
         
         epsg_code = app_state.get('EPSG', '32749')
         
@@ -370,37 +404,88 @@ class Modul2Sediment(QWidget):
         
         self.sed_w.log_signal.connect(self.log_sed.append)
         
-        def update_img(img_path: str):
-            if img_path and os.path.exists(img_path):
-                self.current_plot_path = img_path
-                self.btn_export_png.setEnabled(True)
-                pixmap = QPixmap(img_path).scaled(self.lbl_sed_viz.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                self.lbl_sed_viz.setPixmap(pixmap)
-                
-        self.sed_w.plot_signal.connect(update_img)
+        def update_image_carousel(paths: list):
+            self.plot_paths = [p for p in paths if p and os.path.exists(p)]
+            self.current_plot_index = 0
+            self.show_current_plot()
+            
+        self.sed_w.plot_signal.connect(update_image_carousel)
         
         def on_finished(xyz_path: str):
-            btn_run.setEnabled(True)
-            btn_run.setText("⚡ Eksekusi Matriks & Generate Contours")
+            # [ENTERPRISE FIX]: Memulihkan fungsi tombol secara aman
+            btn_run.set_loading(False)
             
             if xyz_path and os.path.exists(xyz_path):
                 app_state.update('sediment_xyz', xyz_path)
-                self.log_sed.append(f"[STATE] File forcing `{os.path.basename(xyz_path)}` dikunci ke Memori Global.")
+                self.log_sed.append(f"[STATE] File forcing `{os.path.basename(xyz_path)}` dikunci ke Memori Global (Trachytope ks).")
             self.sed_w.deleteLater()
             
         self.sed_w.finished_signal.connect(on_finished)
         self.sed_w.start()
 
+    # ==============================================================================
+    # ENTERPRISE IMAGE CAROUSEL METHODS
+    # ==============================================================================
+    
+    def show_current_plot(self):
+        """Menampilkan gambar pada indeks Carousel saat ini dan mengamankan tombol navigasi."""
+        if not self.plot_paths:
+            self.lbl_sed_viz.clear()
+            self.lbl_sed_viz.setText("Plot Spasial gagal di-render.")
+            self.btn_export_png.setEnabled(False)
+            self.btn_prev_plot.setVisible(False)
+            self.btn_next_plot.setVisible(False)
+            self.lbl_plot_counter.setText("")
+            return
+
+        current_path = self.plot_paths[self.current_plot_index]
+        
+        # [ENTERPRISE FIX]: Memory Leak Guard (Flush old pixmap before loading HD image)
+        self.lbl_sed_viz.clear()
+        pixmap = QPixmap(current_path).scaled(self.lbl_sed_viz.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        self.lbl_sed_viz.setPixmap(pixmap)
+        
+        self.btn_export_png.setEnabled(True)
+        
+        total = len(self.plot_paths)
+        if total > 1:
+            self.btn_prev_plot.setVisible(True)
+            self.btn_next_plot.setVisible(True)
+            # Kunci navigasi jika berada di batas ujung array
+            self.btn_prev_plot.setEnabled(self.current_plot_index > 0)
+            self.btn_next_plot.setEnabled(self.current_plot_index < total - 1)
+            self.lbl_plot_counter.setText(f"Peta {self.current_plot_index + 1} dari {total}")
+        else:
+            self.btn_prev_plot.setVisible(False)
+            self.btn_next_plot.setVisible(False)
+            self.lbl_plot_counter.setText("")
+
+    def show_prev_plot(self):
+        """Mundur ke peta fisik sebelumnya."""
+        if self.current_plot_index > 0:
+            self.current_plot_index -= 1
+            self.show_current_plot()
+
+    def show_next_plot(self):
+        """Maju ke peta fisik selanjutnya (Kriging Multi-Variabel)."""
+        if self.current_plot_index < len(self.plot_paths) - 1:
+            self.current_plot_index += 1
+            self.show_current_plot()
+
     def export_current_plot(self) -> None:
         """Menyimpan gambar HD (PNG) ke direktori pilihan pengguna untuk lampiran Skripsi/Jurnal."""
-        if not self.current_plot_path or not os.path.exists(self.current_plot_path):
+        if not self.plot_paths or self.current_plot_index >= len(self.plot_paths):
             QMessageBox.warning(self, "Export Gagal", "Gambar belum di-generate.")
             return
             
-        save_path, _ = QFileDialog.getSaveFileName(self, "Simpan Gambar HD", "Spatial_Contours.png", "PNG Images (*.png)")
+        current_source = self.plot_paths[self.current_plot_index]
+        default_name = os.path.basename(current_source)
+        
+        save_path, _ = QFileDialog.getSaveFileName(self, "Simpan Peta HD", default_name, "PNG Images (*.png)")
+        
         if save_path:
             try:
-                shutil.copy2(self.current_plot_path, save_path)
+                shutil.copy2(current_source, save_path)
                 QMessageBox.information(self, "Berhasil", f"Gambar HD berhasil disimpan di:\n{save_path}")
             except Exception as e:
                 QMessageBox.critical(self, "I/O Error", f"Gagal menyimpan gambar:\n{e}")
