@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 class PostProcAnimationWorker(QThread):
     """
     [TIER-0] Background Worker for Dynamic NetCDF Rendering.
-    Generates Base64 encoded transparent overlays for immediate injection
-    into Leaflet QWebEngineView (bypassing local CORS restrictions).
+    Generates Base64 encoded TriContourf transparent overlays for immediate injection
+    into Leaflet QWebEngineView.
     """
     log_signal = pyqtSignal(str)
     frame_signal = pyqtSignal(dict)
@@ -22,7 +22,6 @@ class PostProcAnimationWorker(QThread):
 
     def __init__(self, nc_path: str, target_var: str, time_idx: int, epsg: str, out_dir: str):
         super().__init__()
-        # FIX: Enforce absolute paths for IO security
         self.nc = os.path.abspath(nc_path)
         self.var = target_var
         self.idx = time_idx
@@ -31,24 +30,20 @@ class PostProcAnimationWorker(QThread):
 
     def run(self) -> None:
         try:
-            self.log_signal.emit(f"■ Merender Frame Interpolasi Dinamis T={self.idx} untuk matriks '{self.var}'...")
+            self.log_signal.emit(f"■ Merender TriContourf HD Dinamis T={self.idx} untuk variabel '{self.var}'...")
             
-            # Panggilan ke engine fisika Tier-0 (Aman dari Blocking UI)
             res = PostProcEngine.render_overlay(self.nc, self.var, self.idx, self.epsg, self.out)
             
             img_path = res.get('image_path')
             
-            # Failsafe Guard: Memastikan file gambar benar-benar tercipta sebelum membacanya
             if not img_path or not os.path.exists(img_path):
                 raise FileNotFoundError(f"Gagal memuat gambar render dari path: {img_path}")
             
-            # Convert image to base64 to bypass Qt WebEngine local file/CORS restrictions
+            # Base64 bypass Qt WebEngine CORS restrictions
             with open(img_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
             
             res['base64_img'] = f"data:image/png;base64,{encoded_string}"
-            
-            # Hapus path gambar asli dari output untuk mencegah konflik pemanggilan di JS
             res.pop('image_path', None)
             
             logger.debug(f"[POSTPROC WORKER] Frame T={self.idx} successfully rendered and encoded.")
@@ -56,7 +51,6 @@ class PostProcAnimationWorker(QThread):
             self.finished_signal.emit(True)
             
         except Exception as e:
-            # Memisahkan traceback panjang (dikirim ke backend log) dari pesan UI
             error_details = f"{str(e)}\n{traceback.format_exc()}"
             logger.error(f"[FATAL] PostProc Worker Error: {error_details}")
             
@@ -66,7 +60,7 @@ class PostProcAnimationWorker(QThread):
 class ValidationWorker(QThread):
     """
     [TIER-0] Background Worker for Time-Series Point Validation.
-    Executes Nearest Neighbor search and Time Interpolation in the background.
+    Executes C++ KD-Tree Nearest Neighbor search and ASOF Time Interpolation.
     """
     log_signal = pyqtSignal(str)
     result_signal = pyqtSignal(dict)
@@ -84,11 +78,11 @@ class ValidationWorker(QThread):
 
     def run(self) -> None:
         try:
-            self.log_signal.emit(f"■ Mengeksekusi Point-Extraction dan penyelarasan waktu pada titik (Lat: {self.lat}, Lon: {self.lon})...")
+            self.log_signal.emit(f"■ Mengeksekusi KD-Tree Point-Extraction & Sinkronisasi Waktu (Lat: {self.lat}, Lon: {self.lon})...")
             
             res = PostProcEngine.run_point_validation(self.nc, self.csv, self.var, self.lat, self.lon, self.epsg, self.out)
             
-            self.log_signal.emit(f"✅ Ekstraksi selesai. Jarak stasiun terdekat ke node mesh: {res['dist']:.2f} m")
+            self.log_signal.emit(f"✅ Ekstraksi selesai. Jarak Model ke Stasiun Observasi: {res['dist']:.2f} m")
             self.result_signal.emit(res)
             self.finished_signal.emit(True)
             
