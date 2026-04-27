@@ -1,122 +1,194 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
-    <style> 
-        body { margin: 0; padding: 0; background: #030712; overflow: hidden; } 
-        #map { width: 100vw; height: 100vh; } 
-        
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #030712;
+            /* Dark Slate Base */
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #map {
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
         /* [ENTERPRISE FIX]: Inversi UI Leaflet Draw agar kompatibel dengan Dark Mode Fintech Slate */
-        .leaflet-bar { border: 1px solid #3A3F4A !important; border-radius: 6px !important; overflow: hidden; }
-        .leaflet-bar a { background-color: #1F2227 !important; color: #8FC9DC !important; border-bottom: 1px solid #3A3F4A !important; }
-        .leaflet-bar a:hover { background-color: #2D3139 !important; color: #595FF7 !important; }
-        
+        .leaflet-bar {
+            border: 1px solid #3A3F4A !important;
+            border-radius: 8px !important;
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
+        }
+
+        .leaflet-bar a {
+            background-color: #1F2227 !important;
+            color: #8FC9DC !important;
+            border-bottom: 1px solid #3A3F4A !important;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .leaflet-bar a:hover {
+            background-color: #2D3139 !important;
+            color: #595FF7 !important;
+        }
+
         /* Inversi ikon draw yang defaultnya hitam agar menjadi abu-abu cerah/putih */
-        .leaflet-draw-toolbar a { filter: invert(0.8) hue-rotate(180deg); } 
-        
+        .leaflet-draw-toolbar a {
+            filter: invert(0.8) hue-rotate(180deg);
+        }
+
         /* Modifikasi tooltip darurat draw */
-        .leaflet-draw-tooltip { background: #0F172A !important; color: #F8FAFC !important; border: 1px solid #F59E0B !important; }
-        .leaflet-draw-tooltip::before { border-right-color: #F59E0B !important; }
+        .leaflet-draw-tooltip {
+            background: #0F172A !important;
+            color: #F8FAFC !important;
+            border: 1px solid #F59E0B !important;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .leaflet-draw-tooltip::before {
+            border-right-color: #F59E0B !important;
+        }
+
+        /* Hilangkan focus outline default untuk estetika */
+        .leaflet-container:focus {
+            outline: none;
+        }
     </style>
 </head>
+
 <body>
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <script>
-        // [ENTERPRISE SAFEGUARD]: Mencegah ReferenceError saat HTML di-load langsung tanpa config.py
-        // String dipisah agar tidak ikut terganti (replace) oleh backend Python saat kompilasi
-        if (typeof window["__IS_" + "POSTPROC__"] === 'undefined') {
-            window["__IS_" + "POSTPROC__"] = false;
-        }
-        if (typeof window["__DRAW_" + "OPTS__"] === 'undefined') {
-            window["__DRAW_" + "OPTS__"] = false;
-        }
+        "use strict"; // [TIER-0 SAFEGUARD]: Mencegah silent JS errors
 
-        var map = L.map('map', { zoomControl: false }).setView([-8.442, 112.666], 10);
-        
-        // [COMPLIANCE FIX]: Menambahkan atribusi legal CARTO
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { 
+        // Injeksi fallback dari backend jika tidak terdefinisi
+        window.__IS_POSTPROC__ = typeof window.__IS_POSTPROC__ !== 'undefined' ? window.__IS_POSTPROC__ : false;
+        window.__DRAW_OPTS__ = typeof window.__DRAW_OPTS__ !== 'undefined' ? window.__DRAW_OPTS__ : false;
+
+        // Inisialisasi Peta
+        var map = L.map('map', {
+            zoomControl: false,
+            zoomAnimation: true,
+            fadeAnimation: true
+        }).setView([-8.437, 112.669], 12); // Default to Clungup Mangrove
+
+        // [COMPLIANCE FIX]: Atribusi legal CARTO & OSM
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             maxZoom: 20,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
         }).addTo(map);
-        
+
         L.control.zoom({ position: 'bottomright' }).addTo(map);
-        
-        var drawnItems = new L.FeatureGroup(); 
+
+        var drawnItems = new L.FeatureGroup();
         map.addLayer(drawnItems);
-        var isPostProc = __IS_POSTPROC__;
-        
-        if (!isPostProc) {
-            // [BUG FIX]: Menghilangkan override hardcode yang mematikan kapabilitas dari config.py
-            var drawControl = new L.Control.Draw({ 
-                edit: { featureGroup: drawnItems }, 
-                draw: { __DRAW_OPTS__, circlemarker: false } 
+
+        // Control Panel Drawing (Hanya aktif jika BUKAN Post-Processing)
+        if (!window.__IS_POSTPROC__) {
+            var drawControl = new L.Control.Draw({
+                edit: { featureGroup: drawnItems },
+                draw: Object.assign({}, window.__DRAW_OPTS__, { circlemarker: false, circle: false })
             });
             map.addControl(drawControl);
         }
-        
-        var pyBridge = null; 
-        
-        // [FATAL BUG FIX]: Menghentikan interval SEBELUM instansiasi QWebChannel untuk mencegah IPC Memory Leak
+
+        var pyBridge = null;
+
+        // [IPC CONNECTION MANAGER]: Robust Qt WebChannel Initialization
         var bridgeAttempts = 0;
-        var initBridge = setInterval(function() {
+        var initBridge = setInterval(function () {
             bridgeAttempts++;
             if (typeof qt !== 'undefined' && qt.webChannelTransport) {
-                clearInterval(initBridge); // Hentikan loop seketika sebelum async call!
-                new QWebChannel(qt.webChannelTransport, function(channel) { 
+                clearInterval(initBridge);
+                new QWebChannel(qt.webChannelTransport, function (channel) {
                     if (channel.objects && channel.objects.bridge) {
-                        pyBridge = channel.objects.bridge; 
-                        console.log("WebChannel bridge successfully established.");
+                        pyBridge = channel.objects.bridge;
+                        console.log("[SYNC] WebChannel IPC Established.");
                     } else {
-                        console.error("Python bridge object not found in QWebChannel.");
+                        console.error("[FATAL] Python 'bridge' object missing.");
                     }
                 });
-            } else if (bridgeAttempts > 100) { // Timeout setelah ~10 detik
-                console.error("QWebChannel initialization failed. qt.webChannelTransport is undefined.");
+            } else if (bridgeAttempts > 100) {
+                console.warn("[TIMEOUT] QWebChannel Transport not found. Running in standalone mode.");
                 clearInterval(initBridge);
             }
-        }, 100);
-        
-        map.on(L.Draw.Event.CREATED, function (event) {
-            var layer = event.layer; 
-            var type = event.layerType; 
-            drawnItems.addLayer(layer);
-            if (pyBridge) {
-                if (type === 'rectangle' || type === 'polygon') {
-                    var bounds = layer.getBounds();
-                    // Proteksi Payload via JSON.stringify
-                    pyBridge.receive_bbox(JSON.stringify({N: bounds.getNorth(), S: bounds.getSouth(), E: bounds.getEast(), W: bounds.getWest()}));
-                } else if (type === 'polyline') {
-                    var coords = layer.getLatLngs().map(ll => [ll.lat, ll.lng]);
-                    pyBridge.receive_transect(JSON.stringify(coords));
+        }, 50);
+
+        // [IPC SAFE WRAPPER]: Mencegah crash jika Python bridge putus
+        function sendToPython(action, payload) {
+            if (pyBridge && typeof pyBridge[action] === 'function') {
+                try {
+                    pyBridge[action](payload);
+                } catch (e) {
+                    console.error(`[IPC ERROR] Failed to execute ${action}:`, e);
                 }
+            } else {
+                console.warn(`[IPC WARNING] Bridge not ready or action '${action}' missing. Payload:`, payload);
+            }
+        }
+
+        map.on(L.Draw.Event.CREATED, function (event) {
+            var layer = event.layer;
+            var type = event.layerType;
+            drawnItems.addLayer(layer);
+
+            if (type === 'rectangle' || type === 'polygon') {
+                var bounds = layer.getBounds();
+                sendToPython('receive_bbox', JSON.stringify({
+                    N: bounds.getNorth(), S: bounds.getSouth(),
+                    E: bounds.getEast(), W: bounds.getWest()
+                }));
+            } else if (type === 'polyline') {
+                var coords = layer.getLatLngs().map(ll => [ll.lat, ll.lng]);
+                sendToPython('receive_transect', JSON.stringify(coords));
             }
         });
-        
-        function clearMap() { drawnItems.clearLayers(); }
-        
-        function addGeoJSON(geojsonData, color) { 
-            // [SAFEGUARD]: Menangani kemungkinan string JSON dari Python f-strings yang lolos parsing
+
+        // --- PUBLIC API UNTUK DIPANGGIL OLEH PYTHON --- //
+
+        function clearMap() {
+            drawnItems.clearLayers();
+        }
+
+        function addGeoJSON(geojsonData, color) {
             if (typeof geojsonData === 'string') {
-                try { geojsonData = JSON.parse(geojsonData); } 
-                catch (e) { console.error("Invalid GeoJSON string", e); return; }
+                try {
+                    geojsonData = JSON.parse(geojsonData);
+                } catch (e) {
+                    console.error("[GEOJSON ERROR] Invalid JSON structure:", e);
+                    return;
+                }
             }
-            
-            var layer = L.geoJSON(geojsonData, { style: function(f) { return {color: color, weight: 3}; } });
-            layer.eachLayer(function(l) {
-                drawnItems.addLayer(l);
-            });
-            
-            // [BUG FIX]: Validasi sebelum fitBounds agar Peta tidak crash saat Layer kosong (NaN/Inf bounding box)
-            if (drawnItems.getLayers().length > 0) {
-                map.fitBounds(drawnItems.getBounds()); 
+
+            try {
+                var layer = L.geoJSON(geojsonData, {
+                    style: function (f) { return { color: color || '#595FF7', weight: 2, fillOpacity: 0.2 }; }
+                });
+
+                layer.eachLayer(function (l) { drawnItems.addLayer(l); });
+
+                if (drawnItems.getLayers().length > 0) {
+                    map.flyToBounds(drawnItems.getBounds(), { padding: [20, 20], duration: 1.5 });
+                }
+            } catch (error) {
+                console.error("[GEOJSON ERROR] Failed to plot layer:", error);
             }
         }
     </script>
 </body>
+
 </html>
