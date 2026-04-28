@@ -5,6 +5,7 @@
 #              and non-collapsing enterprise GUI.
 # ==============================================================================
 import logging
+import re
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QSizePolicy, QScrollArea
@@ -115,6 +116,27 @@ class ModernButton(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._original_text = text
         
+        # [A11Y] Strip emojis for screen readers to interpret correctly
+        emoji_pattern = re.compile(
+            "["
+            "\U0001f600-\U0001f64f"  # emoticons
+            "\U0001f300-\U0001f5ff"  # symbols & pictographs
+            "\U0001f680-\U0001f6ff"  # transport & map symbols
+            "\U0001f1e0-\U0001f1ff"  # flags (iOS)
+            "\u2702-\u27b0"          # Dingbats
+            "\u24c2-\U0001f251"      # Enclosed characters
+            "]+", flags=re.UNICODE)
+        accessible_text = emoji_pattern.sub(r'', text).strip()
+
+        # fallback to text if stripped text is empty (e.g. icon-only buttons)
+        if accessible_text:
+            self.setAccessibleName(accessible_text)
+        else:
+            self.setAccessibleName(text)
+
+        # [UX] Add tooltip to provide visual context
+        self.setToolTip(text)
+
         if btn_type == "primary":
             self.setObjectName("PrimaryBtn")
         elif btn_type == "outline":
