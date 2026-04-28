@@ -1,0 +1,3 @@
+## 2024-04-28 - [Performance: Nearest Neighbor Query on Unstructured Meshes]
+**Learning:** For single-point nearest neighbor queries on large unstructured meshes (e.g., in `engines/postproc_engine.py`), building a `scipy.spatial.cKDTree` imposes an unnecessary O(N log N) overhead that makes it significantly slower than a direct array calculation.
+**Action:** Avoid `cKDTree` for single-point lookups. Instead, compute the squared distance directly using vectorized operations `(dx**2 + dy**2)` and find the minimum index with `np.argmin()` (O(N) time complexity). Only apply the computationally expensive `np.sqrt` to the minimum value, avoiding O(N) `np.hypot` calculations.
