@@ -11,7 +11,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 from pyproj import Transformer
 import matplotlib.tri as mtri
-from scipy.spatial import cKDTree
 
 # [CRITICAL GUARD]: Memaksa Matplotlib menggunakan backend 'Agg'
 matplotlib.use('Agg')
@@ -176,10 +175,12 @@ class PostProcEngine:
                 else:
                     raise KeyError("Geometri mesh tidak terdeteksi untuk ekstraksi titik.")
                 
-                # [ENTERPRISE FIX]: KD-Tree Nearest Neighbor Search O(log N)
-                # Jauh lebih cepat dari np.hypot dan hemat RAM untuk mesh berukuran >1GB
-                tree = cKDTree(np.column_stack((ux, uy)))
-                closest_dist, min_idx = tree.query([target_x, target_y])
+                # [ENTERPRISE FIX]: Vectorized Squared Distance Search O(N)
+                # Jauh lebih cepat dari cKDTree (O(N log N) build) untuk single-point query
+                # dan menghitung np.sqrt hanya pada hasil akhir.
+                dist_sq = (ux - target_x)**2 + (uy - target_y)**2
+                min_idx = np.argmin(dist_sq)
+                closest_dist = np.sqrt(dist_sq[min_idx])
                 
                 logger.info(f"[VALIDATION] Node mesh terdekat: Index {min_idx}, Jarak {closest_dist:.2f} m")
                 
