@@ -1,0 +1,3 @@
+## 2024-05-24 - Accessibility for Composite Form Controls in PyQt6
+**Learning:** Screen readers and keyboard navigation rely on explicit links between labels and input fields. In composite form controls like a `QLabel` and an input widget, without an explicit connection, screen readers might not correctly announce the label when the input field is focused.
+**Action:** When creating composite form controls, always explicitly link the `QLabel` to its corresponding input widget using `QLabel.setBuddy(input_widget)`. This ensures accessibility tools correctly announce the label and enables keyboard mnemonic focus.
