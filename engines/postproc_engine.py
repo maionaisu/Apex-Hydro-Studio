@@ -11,7 +11,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 from pyproj import Transformer
 import matplotlib.tri as mtri
-from scipy.spatial import cKDTree
 
 # [CRITICAL GUARD]: Memaksa Matplotlib menggunakan backend 'Agg'
 matplotlib.use('Agg')
@@ -178,8 +177,11 @@ class PostProcEngine:
                 
                 # [ENTERPRISE FIX]: KD-Tree Nearest Neighbor Search O(log N)
                 # Jauh lebih cepat dari np.hypot dan hemat RAM untuk mesh berukuran >1GB
-                tree = cKDTree(np.column_stack((ux, uy)))
-                closest_dist, min_idx = tree.query([target_x, target_y])
+                # [BOLT FIX]: KD-Tree O(N log N) overhead for construction is too slow for a single query.
+                # Direct squared distance and np.argmin (O(N)) provides significantly better performance.
+                sq_dist = (ux - target_x)**2 + (uy - target_y)**2
+                min_idx = int(np.argmin(sq_dist))
+                closest_dist = float(np.sqrt(sq_dist[min_idx]))
                 
                 logger.info(f"[VALIDATION] Node mesh terdekat: Index {min_idx}, Jarak {closest_dist:.2f} m")
                 
