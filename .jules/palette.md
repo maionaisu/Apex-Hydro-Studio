@@ -1,0 +1,3 @@
+## 2024-05-03 - FormRow and ModernButton Accessibility Patterns
+**Learning:** Screen readers struggle with reading out emojis embedded in UI text (like in button labels). In PyQt6, `QLabel` does not automatically associate with adjacent input widgets for screen readers and keyboard mnemonics.
+**Action:** When creating composite form controls, use `lbl.setBuddy(input_widget)` to link the label and input. For buttons containing emojis, strip them out using a comprehensive regex (e.g., `[\U00010000-\U0010ffff\u25A0-\u25FF\u2700-\u27BF\u2600-\u26FF\u2B00-\u2BFF\u2300-\u23FF]`) and set the cleaned text using `setAccessibleName()`.

@@ -5,6 +5,7 @@
 #              and non-collapsing enterprise GUI.
 # ==============================================================================
 import logging
+import re
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QSizePolicy, QScrollArea
@@ -13,6 +14,8 @@ from PyQt6.QtCore import Qt, QRect, QRectF, QPoint, QEvent
 from PyQt6.QtGui import QPainter, QPainterPath, QColor, QPen
 
 logger = logging.getLogger(__name__)
+
+EMOJI_PATTERN = re.compile(r'[\U00010000-\U0010ffff\u25A0-\u25FF\u2700-\u27BF\u2600-\u26FF\u2B00-\u2BFF\u2300-\u23FF]')
 
 # ==============================================================================
 # 1. FLEXBOX LAYOUT CONTAINERS (THE CURE FOR "CEMET" UI)
@@ -99,6 +102,7 @@ class FormRow(QWidget):
         lbl.setMinimumWidth(180) # Memberi ruang proporsional
         lbl.setWordWrap(True)
         lbl.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        lbl.setBuddy(input_widget)
         
         input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         
@@ -114,6 +118,7 @@ class ModernButton(QPushButton):
         super().__init__(text, parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._original_text = text
+        self.setAccessibleName(EMOJI_PATTERN.sub('', text).strip())
         
         if btn_type == "primary":
             self.setObjectName("PrimaryBtn")
@@ -128,8 +133,10 @@ class ModernButton(QPushButton):
         if is_loading:
             self._original_text = self.text()
             self.setText(loading_text)
+            self.setAccessibleName(EMOJI_PATTERN.sub('', loading_text).strip())
         else:
             self.setText(self._original_text)
+            self.setAccessibleName(EMOJI_PATTERN.sub('', self._original_text).strip())
 
 # ==============================================================================
 # 3. INTERACTIVE TOUR OVERLAY (HARDENED)
