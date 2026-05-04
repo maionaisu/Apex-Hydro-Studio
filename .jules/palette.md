@@ -1,0 +1,3 @@
+## 2026-05-04 - Stripping Emojis for PyQt6 Screen Readers
+**Learning:** PyQt6 `setAccessibleName()` struggles with emojis, causing issues for screen readers. Aggressive ASCII-only stripping (e.g., `[^\x00-\x7F]`) breaks international/accented characters.
+**Action:** Strip emojis using targeted Unicode regex ranges (`[\U00010000-\U0010ffff\u25A0-\u25FF\u2700-\u27BF\u2600-\u26FF\u2B00-\u2BFF\u2300-\u23FF]`) before passing strings to `setAccessibleName()`, preserving the original text in the UI (`setText()`). Ensure this is applied consistently on interactive elements like buttons, and consider states like loading where the text changes dynamically.
