@@ -1,0 +1,3 @@
+## 2025-03-01 - [A11y/UX] PyQt6 Screen Reader & Emoji Handling
+**Learning:** Screen readers struggle with emojis in PyQt6 applications. Stripping them completely with a broad ASCII regex removes international characters. Also, standard `QLabel` instances acting as form row headers need an explicit link to their input widgets.
+**Action:** Use a targeted Unicode range regex (e.g., `[\U00010000-\U0010ffff\u25A0-\u25FF\u2700-\u27BF\u2600-\u26FF\u2B00-\u2BFF\u2300-\u23FF]`) to safely strip emojis from PyQt6 components via `setAccessibleName()`, preserving i18n text. For composite form layouts pairing a `QLabel` with an input, always use `QLabel.setBuddy(input_widget)` to ensure correct screen reader announcements and keyboard focus.
