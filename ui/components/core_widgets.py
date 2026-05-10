@@ -5,6 +5,7 @@
 #              and non-collapsing enterprise GUI.
 # ==============================================================================
 import logging
+import re
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QSizePolicy, QScrollArea
@@ -101,6 +102,7 @@ class FormRow(QWidget):
         lbl.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         
         input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        lbl.setBuddy(input_widget)
         
         layout.addWidget(lbl)
         layout.addWidget(input_widget)
@@ -115,6 +117,15 @@ class ModernButton(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._original_text = text
         
+        # [A11Y]: Strip emojis for Screen Reader accessible name
+        clean_text = re.sub(r'[🌀-🫿■-◿✀-➿☀-⛿⬀-⯿⌀-⏿️]', '', text).strip()
+        if clean_text:
+            self.setAccessibleName(clean_text)
+
+        # [A11Y]: Add ToolTip if text is icon-only or very short and ToolTip not already set
+        if len(clean_text) < 2 and text != clean_text:
+            self.setToolTip("Action")
+
         if btn_type == "primary":
             self.setObjectName("PrimaryBtn")
         elif btn_type == "outline":
