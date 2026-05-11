@@ -4,6 +4,7 @@
 # Description: Defines the foundational building blocks for a fluid, breathable,
 #              and non-collapsing enterprise GUI.
 # ==============================================================================
+import re
 import logging
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
@@ -99,6 +100,7 @@ class FormRow(QWidget):
         lbl.setMinimumWidth(180) # Memberi ruang proporsional
         lbl.setWordWrap(True)
         lbl.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        lbl.setBuddy(input_widget)
         
         input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         
@@ -115,6 +117,10 @@ class ModernButton(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._original_text = text
         
+        # Strip emojis for screen reader accessibility
+        clean_text = re.sub(r'[\U0001F300-\U0001FAFF\u25A0-\u25FF\u2700-\u27BF\u2600-\u26FF\u2B00-\u2BFF\u2300-\u23FF\uFE0F]', '', text).strip()
+        self.setAccessibleName(clean_text)
+
         if btn_type == "primary":
             self.setObjectName("PrimaryBtn")
         elif btn_type == "outline":
