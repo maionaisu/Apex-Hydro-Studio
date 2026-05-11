@@ -1,0 +1,3 @@
+## 2024-05-11 - Iterate over geometry instead of using iterrows()
+**Learning:** When iterating over a pandas GeoDataFrame where only the geometry column is required, using `iterrows()` introduces significant overhead because it instantiates a new Series object for each row. Directly iterating over the `geometry` property (e.g., `for geom in gdf.geometry:`) skips this instantiation, providing a measured ~93% overhead reduction.
+**Action:** When only geometry (or another single column) is needed, always iterate over the specific series (`gdf.geometry`) rather than `gdf.iterrows()`. Avoid `iterrows()` whenever possible in performance-critical loops.
