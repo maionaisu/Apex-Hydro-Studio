@@ -1,0 +1,3 @@
+## 2024-05-13 - ModernButton ARIA Emoji Handling
+**Learning:** Screen readers struggle to vocalize strings containing emojis, which are widely used for visual polish in this app's buttons. Stripping emojis using a general `\U00010000-\U0010ffff` regex can inadvertently remove historical scripts and many CJK ideographs, impacting accessibility for non-English users.
+**Action:** Always use targeted Unicode regex blocks (`[\U0001F300-\U0001FAFF\u25A0-\u25FF\u2700-\u27BF\u2600-\u26FF\u2B00-\u2BFF\u2300-\u23FF\uFE0F]`) to clean `setAccessibleName` strings in custom PyQt6 widgets without stripping vital characters.
