@@ -5,6 +5,7 @@
 #              and non-collapsing enterprise GUI.
 # ==============================================================================
 import logging
+import re
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QSizePolicy, QScrollArea
@@ -13,6 +14,9 @@ from PyQt6.QtCore import Qt, QRect, QRectF, QPoint, QEvent
 from PyQt6.QtGui import QPainter, QPainterPath, QColor, QPen
 
 logger = logging.getLogger(__name__)
+
+# Pre-compiled regex for filtering emojis (prevents stripping CJK/historical scripts)
+EMOJI_PATTERN = re.compile(r'[\U0001F300-\U0001FAFF\u25A0-\u25FF\u2700-\u27BF\u2600-\u26FF\u2B00-\u2BFF\u2300-\u23FF\uFE0F]')
 
 # ==============================================================================
 # 1. FLEXBOX LAYOUT CONTAINERS (THE CURE FOR "CEMET" UI)
@@ -115,6 +119,11 @@ class ModernButton(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._original_text = text
         
+        # Accessibility Enhancement: Strip emojis from the accessible name
+        clean_name = EMOJI_PATTERN.sub('', text).strip()
+        if clean_name:
+            self.setAccessibleName(clean_name)
+
         if btn_type == "primary":
             self.setObjectName("PrimaryBtn")
         elif btn_type == "outline":
