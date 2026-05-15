@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+Apex_Data_Exports/
+Apex_Temp_Buffer/
+Apex_FM_Model_Final/
