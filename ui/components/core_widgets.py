@@ -99,6 +99,7 @@ class FormRow(QWidget):
         lbl.setMinimumWidth(180) # Memberi ruang proporsional
         lbl.setWordWrap(True)
         lbl.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        lbl.setBuddy(input_widget)
         
         input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         

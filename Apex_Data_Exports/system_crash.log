@@ -1,0 +1,61 @@
+2026-05-17 10:50:35,297 [INFO] utils.config - [CONFIG] Temporary buffer telah dibersihkan secara atomik.
+2026-05-17 10:50:36,713 [DEBUG] matplotlib - matplotlib data path: /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages/matplotlib/mpl-data
+2026-05-17 10:50:36,719 [DEBUG] matplotlib - CONFIGDIR=/home/jules/.config/matplotlib
+2026-05-17 10:50:36,721 [DEBUG] matplotlib - interactive is False
+2026-05-17 10:50:36,721 [DEBUG] matplotlib - platform is linux
+2026-05-17 10:50:36,752 [DEBUG] matplotlib - CACHEDIR=/home/jules/.cache/matplotlib
+2026-05-17 10:50:36,753 [DEBUG] matplotlib.font_manager - Using fontManager instance from /home/jules/.cache/matplotlib/fontlist-v390.json
+2026-05-17 10:50:37,082 [DEBUG] matplotlib.pyplot - Loaded backend Agg version v2.2.
+2026-05-17 10:50:37,888 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-05-17 10:50:37,918 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-05-17 10:50:37,965 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-05-17 10:50:37,968 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-05-17 10:50:38,006 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-05-17 10:50:38,054 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-05-17 10:50:38,073 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-05-17 10:50:38,131 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-05-17 10:50:38,139 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-05-17 10:50:38,230 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-05-17 10:50:38,309 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-05-17 10:50:38,513 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-05-17 10:50:39,403 [DEBUG] numcodecs - Registering codec 'zlib'
+2026-05-17 10:50:39,404 [DEBUG] numcodecs - Registering codec 'gzip'
+2026-05-17 10:50:39,404 [DEBUG] numcodecs - Registering codec 'bz2'
+2026-05-17 10:50:39,405 [DEBUG] numcodecs - Registering codec 'lzma'
+2026-05-17 10:50:39,407 [DEBUG] numcodecs - Registering codec 'blosc'
+2026-05-17 10:50:39,408 [DEBUG] numcodecs - Registering codec 'zstd'
+2026-05-17 10:50:39,409 [DEBUG] numcodecs - Registering codec 'lz4'
+2026-05-17 10:50:39,409 [DEBUG] numcodecs - Registering codec 'astype'
+2026-05-17 10:50:39,410 [DEBUG] numcodecs - Registering codec 'delta'
+2026-05-17 10:50:39,411 [DEBUG] numcodecs - Registering codec 'quantize'
+2026-05-17 10:50:39,411 [DEBUG] numcodecs - Registering codec 'fixedscaleoffset'
+2026-05-17 10:50:39,412 [DEBUG] numcodecs - Registering codec 'packbits'
+2026-05-17 10:50:39,412 [DEBUG] numcodecs - Registering codec 'categorize'
+2026-05-17 10:50:39,413 [DEBUG] numcodecs - Registering codec 'pickle'
+2026-05-17 10:50:39,413 [DEBUG] numcodecs - Registering codec 'base64'
+2026-05-17 10:50:39,414 [DEBUG] numcodecs - Registering codec 'shuffle'
+2026-05-17 10:50:39,415 [DEBUG] numcodecs - Registering codec 'bitround'
+2026-05-17 10:50:39,421 [DEBUG] numcodecs - Registering codec 'crc32'
+2026-05-17 10:50:39,421 [DEBUG] numcodecs - Registering codec 'adler32'
+2026-05-17 10:50:39,421 [DEBUG] numcodecs - Registering codec 'jenkins_lookup3'
+2026-05-17 10:50:39,422 [DEBUG] numcodecs - Registering codec 'json2'
+2026-05-17 10:50:39,424 [DEBUG] numcodecs - Registering codec 'vlen-utf8'
+2026-05-17 10:50:39,424 [DEBUG] numcodecs - Registering codec 'vlen-bytes'
+2026-05-17 10:50:39,424 [DEBUG] numcodecs - Registering codec 'vlen-array'
+2026-05-17 10:50:39,425 [DEBUG] numcodecs - Registering codec 'fletcher32'
+2026-05-17 10:50:39,427 [DEBUG] numcodecs - Registering codec 'crc32c'
+2026-05-17 10:50:39,812 [INFO] hydrolib.core.base.models - Loading data from pvstordt.his
+2026-05-17 10:50:39,814 [INFO] hydrolib.core.base.models - Loading data from pvflowdt.his
+2026-05-17 10:50:39,815 [INFO] hydrolib.core.base.models - Loading data from upflowdt.his
+2026-05-17 10:50:39,817 [INFO] hydrolib.core.base.models - Loading data from upgwlvdt.his
+2026-05-17 10:50:39,818 [INFO] hydrolib.core.base.models - Loading data from grnstrdt.his
+2026-05-17 10:50:39,819 [INFO] hydrolib.core.base.models - Loading data from grnflodt.his
+2026-05-17 10:50:39,820 [INFO] hydrolib.core.base.models - Loading data from ow_lvldt.his
+2026-05-17 10:50:39,821 [INFO] hydrolib.core.base.models - Loading data from ow_excdt.his
+2026-05-17 10:50:39,823 [INFO] hydrolib.core.base.models - Loading data from strflodt.his
+2026-05-17 10:50:39,824 [INFO] hydrolib.core.base.models - Loading data from bndflodt.his
+2026-05-17 10:50:39,825 [INFO] hydrolib.core.base.models - Loading data from plvstrdt.his
+2026-05-17 10:50:39,826 [INFO] hydrolib.core.base.models - Loading data from plvflodt.his
+2026-05-17 10:50:39,827 [INFO] hydrolib.core.base.models - Loading data from balansdt.his
+2026-05-17 10:50:39,829 [INFO] hydrolib.core.base.models - Loading data from cumbaldt.his
+2026-05-17 10:50:39,830 [INFO] hydrolib.core.base.models - Loading data from saltdt.his
