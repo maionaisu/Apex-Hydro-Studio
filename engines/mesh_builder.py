@@ -260,8 +260,8 @@ class MeshBuilderEngine:
                     log_cb("  ├ Menyuntikkan Land Boundary Clipping (.ldb)...")
                     try:
                         ldb_gdf = dfmt.read_polyfile(ldb_file)
-                        for _, row in ldb_gdf.iterrows():
-                            geom = row.geometry
+                        # [⚡ BOLT OPTIMIZATION]: Direct geometry iteration avoids creating expensive pandas Series objects
+                        for geom in ldb_gdf.geometry:
                             if geom.geom_type in ['Polygon', 'MultiPolygon']:
                                 coords = np.array(geom.exterior.coords) if geom.geom_type == 'Polygon' else np.array(geom.coords)
                                 geom_list = GeometryList(
