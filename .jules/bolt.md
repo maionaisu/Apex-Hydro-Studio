@@ -1,0 +1,3 @@
+## 2024-05-19 - Avoid cKDTree for Single-Point Queries
+**Learning:** For single-point nearest neighbor queries on large arrays (e.g., extracting timeseries from a large unstructured mesh in `postproc_engine.py`), building a `scipy.spatial.cKDTree` takes O(N log N) time, which is significantly slower than calculating the distance across the array directly.
+**Action:** Use a direct O(N) calculation like `dist_sq = (ux - target_x)**2 + (uy - target_y)**2` and `min_idx = np.argmin(dist_sq)`. Furthermore, only take the square root of the final minimum value to avoid computationally expensive `np.hypot` or `np.sqrt` on the entire array.
