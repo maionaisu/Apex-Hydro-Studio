@@ -157,7 +157,10 @@ class Modul1ERA5(QWidget):
         g0 = QFormLayout()
         g0.setHorizontalSpacing(16)
         g0.setVerticalSpacing(16)
-        g0.addRow(QLabel("API Key:"), self.inp_api)
+
+        lbl_api = QLabel("API Key:")
+        lbl_api.setBuddy(self.inp_api)
+        g0.addRow(lbl_api, self.inp_api)
         
         self.var_list = QListWidget()
         self.var_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
@@ -187,7 +190,9 @@ class Modul1ERA5(QWidget):
                 if v_id in default_selected: item.setSelected(True)
             self.var_list.addItem(item)
 
-        g0.addRow(QLabel("Katalog:"), self.var_list)
+        lbl_katalog = QLabel("Katalog:")
+        lbl_katalog.setBuddy(self.var_list)
+        g0.addRow(lbl_katalog, self.var_list)
         
         safe_end_dt = QDateTime.currentDateTime().addDays(-5) 
         self.dt_start = QDateTimeEdit(safe_end_dt.addYears(-1))
@@ -205,7 +210,10 @@ class Modul1ERA5(QWidget):
         h_date.addWidget(self.dt_start)
         h_date.addWidget(QLabel(" s/d ", styleSheet="color:#9CA3AF; font-weight:bold;"))
         h_date.addWidget(self.dt_end)
-        g0.addRow(QLabel("Rentang:"), h_date)
+
+        lbl_rentang = QLabel("Rentang:")
+        lbl_rentang.setBuddy(self.dt_start)
+        g0.addRow(lbl_rentang, h_date)
         grp0.add_layout(g0)
         
         self.btn_dl_era5 = ModernButton("↓ Mulai Unduh dari Server Copernicus (.nc)", "primary")
@@ -255,7 +263,10 @@ class Modul1ERA5(QWidget):
         
         h_man = QHBoxLayout(); h_man.setSpacing(10)
         h_man.addWidget(self.inp_man_hs); h_man.addWidget(self.inp_man_tp); h_man.addWidget(self.inp_man_dir)
-        g2.addRow(QLabel("Input Manual:"), h_man)
+
+        lbl_man = QLabel("Input Manual:")
+        lbl_man.setBuddy(self.inp_man_hs)
+        g2.addRow(lbl_man, h_man)
         
         btn_inj = ModernButton("Injeksi Manual (Tanpa .nc)", "danger")
         btn_inj.clicked.connect(self.manual_override_wave)
