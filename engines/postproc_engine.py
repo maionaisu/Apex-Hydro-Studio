@@ -11,7 +11,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 from pyproj import Transformer
 import matplotlib.tri as mtri
-from scipy.spatial import cKDTree
 
 # [CRITICAL GUARD]: Memaksa Matplotlib menggunakan backend 'Agg'
 matplotlib.use('Agg')
@@ -30,7 +29,7 @@ class PostProcEngine:
     [TIER-0] Mesin ekstraksi dan rendering NetCDF (.nc).
     Upgraded with:
     1. TriContourf untuk Leaflet Overlay HD.
-    2. SciPy cKDTree untuk pencarian spasial O(log N) instan.
+    2. Pencarian spasial O(N) dengan distance calculation langsung.
     3. Academic White Theme Plots untuk pelaporan saintifik.
     """
 
@@ -176,10 +175,11 @@ class PostProcEngine:
                 else:
                     raise KeyError("Geometri mesh tidak terdeteksi untuk ekstraksi titik.")
                 
-                # [ENTERPRISE FIX]: KD-Tree Nearest Neighbor Search O(log N)
-                # Jauh lebih cepat dari np.hypot dan hemat RAM untuk mesh berukuran >1GB
-                tree = cKDTree(np.column_stack((ux, uy)))
-                closest_dist, min_idx = tree.query([target_x, target_y])
+                # [ENTERPRISE FIX]: Squared Euclidean Nearest Neighbor Search O(N)
+                # Avoiding O(N log N) tree construction overhead for single-point queries
+                dist_sq = (ux - target_x)**2 + (uy - target_y)**2
+                min_idx = np.argmin(dist_sq)
+                closest_dist = np.sqrt(dist_sq[min_idx])
                 
                 logger.info(f"[VALIDATION] Node mesh terdekat: Index {min_idx}, Jarak {closest_dist:.2f} m")
                 
