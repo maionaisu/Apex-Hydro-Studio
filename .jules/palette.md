@@ -1,0 +1,3 @@
+## 2024-05-20 - Stripping Emojis for Screen Readers in PyQt6
+**Learning:** Screen readers struggle with emojis, and standard methods for setting accessible names in PyQt6 do not automatically handle them well. Removing them using a specific unicode block regex improves screen reader accessibility without breaking labels.
+**Action:** Use a regex like `re.compile(r'[\U0001F300-\U0001FAFF\u25A0-\u25FF\u2700-\u27BF\u2600-\u26FF\u2B00-\u2BFF\u2300-\u23FF\uFE0F]')` to strip emojis before passing text to `setAccessibleName()`, being careful to not strip the entire astral plane which contains valid scripts.
