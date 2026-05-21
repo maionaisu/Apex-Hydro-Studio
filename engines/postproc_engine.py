@@ -11,7 +11,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 from pyproj import Transformer
 import matplotlib.tri as mtri
-from scipy.spatial import cKDTree
 
 # [CRITICAL GUARD]: Memaksa Matplotlib menggunakan backend 'Agg'
 matplotlib.use('Agg')
@@ -30,7 +29,7 @@ class PostProcEngine:
     [TIER-0] Mesin ekstraksi dan rendering NetCDF (.nc).
     Upgraded with:
     1. TriContourf untuk Leaflet Overlay HD.
-    2. SciPy cKDTree untuk pencarian spasial O(log N) instan.
+    2. Pencarian spasial O(N) menggunakan squared distance dan argmin.
     3. Academic White Theme Plots untuk pelaporan saintifik.
     """
 
@@ -134,7 +133,7 @@ class PostProcEngine:
     @staticmethod
     def run_point_validation(nc_path: str, csv_path: str, target_var: str, lat: float, lon: float, epsg: str, out_dir: str) -> dict:
         """
-        Mengekstrak time-series dengan SciPy KD-Tree (O(logN)), Sinkronisasi waktu ASOF,
+        Mengekstrak time-series dengan pencarian spasial O(N), Sinkronisasi waktu ASOF,
         dan merender Academic White Theme Plot untuk Skripsi.
         """
         if not HAS_XARRAY: 
@@ -144,7 +143,7 @@ class PostProcEngine:
         fig = None
         
         try:
-            logger.info(f"[VALIDATION] Kalibrasi KD-Tree Model: {os.path.basename(nc_path)} | Obs: {os.path.basename(csv_path)}")
+            logger.info(f"[VALIDATION] Kalibrasi Model: {os.path.basename(nc_path)} | Obs: {os.path.basename(csv_path)}")
             
             var_map = {
                 'Hsig (Tinggi Gelombang)': ('Hsig', 'Hs', 'm'),
@@ -176,10 +175,11 @@ class PostProcEngine:
                 else:
                     raise KeyError("Geometri mesh tidak terdeteksi untuk ekstraksi titik.")
                 
-                # [ENTERPRISE FIX]: KD-Tree Nearest Neighbor Search O(log N)
-                # Jauh lebih cepat dari np.hypot dan hemat RAM untuk mesh berukuran >1GB
-                tree = cKDTree(np.column_stack((ux, uy)))
-                closest_dist, min_idx = tree.query([target_x, target_y])
+                # [ENTERPRISE FIX]: Vectorized Squared Distance Nearest Neighbor Search O(N)
+                # Jauh lebih cepat dari membangun cKDTree O(N log N) untuk single-point query
+                sq_dists = (ux - target_x)**2 + (uy - target_y)**2
+                min_idx = np.argmin(sq_dists)
+                closest_dist = np.sqrt(sq_dists[min_idx])
                 
                 logger.info(f"[VALIDATION] Node mesh terdekat: Index {min_idx}, Jarak {closest_dist:.2f} m")
                 
