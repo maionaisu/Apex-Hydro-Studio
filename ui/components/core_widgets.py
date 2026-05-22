@@ -4,6 +4,7 @@
 # Description: Defines the foundational building blocks for a fluid, breathable,
 #              and non-collapsing enterprise GUI.
 # ==============================================================================
+import re
 import logging
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
@@ -100,6 +101,9 @@ class FormRow(QWidget):
         lbl.setWordWrap(True)
         lbl.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         
+        # [A11Y] Explicitly link the label to the input widget for screen readers and mnemonic focus
+        lbl.setBuddy(input_widget)
+
         input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         
         layout.addWidget(lbl)
@@ -110,6 +114,10 @@ class ModernButton(QPushButton):
     [TIER-0] Standardized enterprise button mapping to QSS states.
     Equipped with Async Guard (set_loading) to prevent double-click worker crashes.
     """
+
+    # Pre-compile the regex pattern for performance
+    _EMOJI_PATTERN = re.compile(r'[\U0001F300-\U0001FAFF\u25A0-\u25FF\u2700-\u27BF\u2600-\u26FF\u2B00-\u2BFF\u2300-\u23FF\uFE0F]')
+
     def __init__(self, text: str, btn_type: str = "primary", parent=None):
         super().__init__(text, parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -122,14 +130,24 @@ class ModernButton(QPushButton):
         elif btn_type == "danger":
             self.setObjectName("DangerBtn")
             
+        self._update_accessibility(self.text())
+
+    def _update_accessibility(self, text: str) -> None:
+        """[A11Y] Strip emojis for screen readers to prevent them from reading unicode character names."""
+        clean_name = self._EMOJI_PATTERN.sub('', text).strip()
+        if clean_name:
+            self.setAccessibleName(clean_name)
+
     def set_loading(self, is_loading: bool, loading_text: str = "⏳ Memproses...") -> None:
         """[ENTERPRISE SAFEGUARD]: Cegah double-submission / race condition UI."""
         self.setEnabled(not is_loading)
         if is_loading:
             self._original_text = self.text()
             self.setText(loading_text)
+            self._update_accessibility(loading_text)
         else:
             self.setText(self._original_text)
+            self._update_accessibility(self._original_text)
 
 # ==============================================================================
 # 3. INTERACTIVE TOUR OVERLAY (HARDENED)
