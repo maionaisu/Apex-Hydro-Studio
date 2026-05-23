@@ -1,0 +1,3 @@
+## 2024-05-23 - Accessibility linking in PyQt6 layouts and Emoji stripping
+**Learning:** `QLabel` requires explicit `setBuddy` linkage to its input widget for screen readers when manually paired in custom composite layouts like `FormRow`, as it is not done automatically. Additionally, screen readers handle emojis poorly, so setting an accessible name for widgets like `ModernButton` requires stripping emojis out of text using regex.
+**Action:** Use `lbl.setBuddy(input_widget)` in composite input widgets, and string cleaning regex when defining `setAccessibleName` for elements containing emojis.
