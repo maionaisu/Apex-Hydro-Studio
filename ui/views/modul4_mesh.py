@@ -487,8 +487,8 @@ class Modul4Mesh(QWidget):
             
             with open(ldb_path, 'w', encoding='utf-8') as f:
                 bnd_counter = 1
-                for i, row in gdf.iterrows():
-                    geom = row.geometry
+                # ⚡ Bolt Optimization: Iterate directly over .geometry to avoid pandas Series instantiation overhead
+                for geom in gdf.geometry:
                     if geom is None: continue
                     
                     geoms = [geom] if geom.geom_type in ['Polygon', 'LineString'] else geom.geoms
