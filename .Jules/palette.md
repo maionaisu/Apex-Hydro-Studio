@@ -1,0 +1,3 @@
+## 2025-05-28 - [Accessible Component State & Keyboard Navigation]
+**Learning:** Screen readers struggle with emojis embedded in standard component labels. Strip them out for accessibility while keeping visual UI rich. Also, `QFormLayout.addRow` does not automatically link explicit `QLabel` inputs in custom layouts with their fields.
+**Action:** When building custom combo-widgets or form components, use targeted regular expressions (`re.sub` for specific emoji ranges) on the text and set it using `setAccessibleName()`, particularly to handle state changes like button loading texts. Always call `QLabel.setBuddy(input)` when rolling out manual input component layouts like `FormRow` to ensure proper keyboard mnemonic focus and screen reader narration.
