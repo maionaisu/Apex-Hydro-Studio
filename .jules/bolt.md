@@ -1,0 +1,3 @@
+## 2024-05-15 - [Direct Geometry Iteration]
+**Learning:** When iterating over a GeoDataFrame and only the geometry column is required, using `iterrows()` incurs a significant performance overhead (~93%) due to row-by-row Series object instantiation.
+**Action:** Always iterate directly over `gdf.geometry` (`for geom in gdf.geometry:`) when processing spatial features in a loop to avoid unnecessary Pandas Series creation overhead.
