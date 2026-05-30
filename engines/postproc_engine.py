@@ -176,10 +176,12 @@ class PostProcEngine:
                 else:
                     raise KeyError("Geometri mesh tidak terdeteksi untuk ekstraksi titik.")
                 
-                # [ENTERPRISE FIX]: KD-Tree Nearest Neighbor Search O(log N)
-                # Jauh lebih cepat dari np.hypot dan hemat RAM untuk mesh berukuran >1GB
-                tree = cKDTree(np.column_stack((ux, uy)))
-                closest_dist, min_idx = tree.query([target_x, target_y])
+                # [ENTERPRISE FIX]: O(N) Vectorized Squared Distance for Single-Point Search
+                # Menghindari overhead konstruksi KD-Tree O(N log N) yang sangat lambat
+                # untuk query titik tunggal pada mesh besar. Lebih cepat dari np.hypot.
+                sq_dists = (ux - target_x)**2 + (uy - target_y)**2
+                min_idx = int(np.argmin(sq_dists))
+                closest_dist = float(np.sqrt(sq_dists[min_idx]))
                 
                 logger.info(f"[VALIDATION] Node mesh terdekat: Index {min_idx}, Jarak {closest_dist:.2f} m")
                 
