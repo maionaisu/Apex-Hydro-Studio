@@ -127,7 +127,9 @@ class Modul6PostProc(QWidget):
         self.cmb_var = QComboBox()
         self.cmb_var.addItems(['Hsig', 'Tp', 'Wdir', 'mesh2d_s1', 'mesh2d_ucx', 'mesh2d_taus'])
         self.cmb_var.setStyleSheet("background-color: #1F2227; border: 1px solid #3A3F4A; border-radius: 6px; padding: 6px; color: white;")
-        g1.addRow(QLabel("Variabel Target: ", styleSheet=LABEL_STYLE), self.cmb_var)
+        lbl_a11y_1 = QLabel("Variabel Target: ", styleSheet=LABEL_STYLE)
+        lbl_a11y_1.setBuddy(self.cmb_var)
+        g1.addRow(lbl_a11y_1, self.cmb_var)
         
         self.btn_ren = ModernButton("▶ RENDER FRAME", "primary")
         self.btn_ren.clicked.connect(lambda: self.trigger_render(self.sld_time.value()))
@@ -212,7 +214,9 @@ class Modul6PostProc(QWidget):
         self.cmb_v_var = QComboBox()
         self.cmb_v_var.addItems(['Hsig (Tinggi Gelombang)', 'Tp (Periode Puncak)'])
         self.cmb_v_var.setStyleSheet("background-color: #1F2227; border: 1px solid #3A3F4A; border-radius: 6px; padding: 6px; color: white;")
-        g1.addRow(QLabel("Target Validasi:", styleSheet=LABEL_STYLE), self.cmb_v_var)
+        lbl_a11y_2 = QLabel("Target Validasi:", styleSheet=LABEL_STYLE)
+        lbl_a11y_2.setBuddy(self.cmb_v_var)
+        g1.addRow(lbl_a11y_2, self.cmb_v_var)
         
         grp1.add_layout(g1)
         h_ctrl.addWidget(grp1, stretch=5)

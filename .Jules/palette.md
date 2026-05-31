@@ -1,0 +1,3 @@
+## 2024-05-31 - [QLabel Buddy Pattern for Accessibility]
+**Learning:** In PyQt6, `QFormLayout.addRow(QLabel, widget)` does NOT auto-set the buddy. You must manually call `label.setBuddy(widget)` when passing pre-existing `QLabel` instances to ensure proper screen reader support and keyboard navigation. I noticed the UI uses inline `QLabel("...")` inside `.addRow()` across various view modules.
+**Action:** Refactored all instances of `.addRow(QLabel(...), widget)` to instantiate the `QLabel` first, call `setBuddy(widget)`, and then add both to the form layout. Applied this pattern to all modules in `ui/views/`. Also fixed the `FormRow` composite widget in `core_widgets.py`.

@@ -95,7 +95,9 @@ class Modul5Execution(QWidget):
         h_file.addWidget(self.inp_bat, stretch=8); h_file.addWidget(btn_browse, stretch=2)
         
         label_style = "QLabel { color:#CBD5E1; font-weight:bold; font-size:12px; border:none; }"
-        g1.addRow(QLabel("Executable (.bat):", styleSheet=label_style), h_file)
+        lbl_a11y_1 = QLabel("Executable (.bat):", styleSheet=label_style)
+        lbl_a11y_1.setBuddy(self.inp_bat)
+        g1.addRow(lbl_a11y_1, h_file)
         
         self.cmb_config = QComboBox()
         self.cmb_config.addItems([
@@ -103,7 +105,9 @@ class Modul5Execution(QWidget):
             "Apex_Flow.mdu (Mode D-FLOW STANDALONE)",
             "Apex_Wave.mdw (Mode D-WAVES STANDALONE)"
         ])
-        g1.addRow(QLabel("Target Eksekusi:", styleSheet=label_style), self.cmb_config)
+        lbl_a11y_2 = QLabel("Target Eksekusi:", styleSheet=label_style)
+        lbl_a11y_2.setBuddy(self.cmb_config)
+        g1.addRow(lbl_a11y_2, self.cmb_config)
         
         grp1.add_layout(g1)
         h_groups.addWidget(grp1, stretch=6)
