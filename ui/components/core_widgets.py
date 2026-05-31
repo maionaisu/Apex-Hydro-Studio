@@ -95,6 +95,7 @@ class FormRow(QWidget):
         layout.setSpacing(16)
         
         lbl = QLabel(label_text)
+        lbl.setBuddy(input_widget)
         lbl.setStyleSheet("color: #E2E8F0; font-weight: 600; font-size: 13px; border: none;")
         lbl.setMinimumWidth(180) # Memberi ruang proporsional
         lbl.setWordWrap(True)

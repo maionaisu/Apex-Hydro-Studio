@@ -262,7 +262,9 @@ class Modul4Mesh(QWidget):
         self.cmb_bnd_dir = QComboBox()
         self.cmb_bnd_dir.addItems(["South", "North", "East", "West"])
         self.cmb_bnd_dir.setItemText(0, "Selatan (Samudra Hindia)")
-        fg2.addRow(QLabel("Arah Laut Lepas:", styleSheet=LABEL_STYLE), self.cmb_bnd_dir)
+        lbl_a11y_1 = QLabel("Arah Laut Lepas:", styleSheet=LABEL_STYLE)
+        lbl_a11y_1.setBuddy(self.cmb_bnd_dir)
+        fg2.addRow(lbl_a11y_1, self.cmb_bnd_dir)
         
         self.chk_riemann = QCheckBox("Gunakan Riemann Absorbing Boundary")
         self.chk_riemann.setChecked(True)
@@ -327,19 +329,26 @@ class Modul4Mesh(QWidget):
         
         self.cmb_w_fric = QComboBox()
         self.cmb_w_fric.addItems(["JONSWAP", "COLLINS", "MADSEN"])
-        wg2.addRow(QLabel("Bottom Friction:", styleSheet=LABEL_STYLE), self.cmb_w_fric)
+        lbl_a11y_2 = QLabel("Bottom Friction:", styleSheet=LABEL_STYLE)
+        lbl_a11y_2.setBuddy(self.cmb_w_fric)
+        wg2.addRow(lbl_a11y_2, self.cmb_w_fric)
         
         self.inp_gamma = QLineEdit("0.73")
         self.inp_gamma.setFixedWidth(80)
-        wg2.addRow(QLabel("Gamma Breaking:", styleSheet=LABEL_STYLE), self.inp_gamma)
+        lbl_a11y_3 = QLabel("Gamma Breaking:", styleSheet=LABEL_STYLE)
+        lbl_a11y_3.setBuddy(self.inp_gamma)
+        wg2.addRow(lbl_a11y_3, self.inp_gamma)
         
         self.inp_w_level = QLineEdit("0.0")
         self.inp_w_level.setFixedWidth(80)
-        wg2.addRow(QLabel("Elevasi Air Konstan (m):", styleSheet=LABEL_STYLE), self.inp_w_level)
+        lbl_a11y_4 = QLabel("Elevasi Air Konstan (m):", styleSheet=LABEL_STYLE)
+        lbl_a11y_4.setBuddy(self.inp_w_level)
+        wg2.addRow(lbl_a11y_4, self.inp_w_level)
         
         self.lbl_w_ic = QLabel("Hs: - m | Tp: - s | Dir: - °")
         self.lbl_w_ic.setStyleSheet("color: #595FF7; font-weight: bold; font-family: 'Consolas', monospace; font-size: 13px; padding: 10px; background: #1F2227; border-radius: 8px; border: 1px solid #3A3F4A;")
-        wg2.addRow(QLabel("Initial Condition:", styleSheet=LABEL_STYLE), self.lbl_w_ic)
+        lbl_a11y_5 = QLabel("Initial Condition:", styleSheet=LABEL_STYLE)
+        wg2.addRow(lbl_a11y_5, self.lbl_w_ic)
         
         wgrp2.add_layout(wg2)
         wc2.addWidget(wgrp2)

@@ -86,8 +86,12 @@ class Modul3Tide(QWidget):
         self.tcmb_z = QComboBox()
         
         label_style = "QLabel { color: #CBD5E1; font-weight: bold; font-size: 12px; border: none; }"
-        g1.addRow(QLabel("Kolom Waktu (T):", styleSheet=label_style), self.tcmb_t)
-        g1.addRow(QLabel("Kolom Elevasi (Z):", styleSheet=label_style), self.tcmb_z)
+        lbl_a11y_1 = QLabel("Kolom Waktu (T):", styleSheet=label_style)
+        lbl_a11y_1.setBuddy(self.tcmb_t)
+        g1.addRow(lbl_a11y_1, self.tcmb_t)
+        lbl_a11y_2 = QLabel("Kolom Elevasi (Z):", styleSheet=label_style)
+        lbl_a11y_2.setBuddy(self.tcmb_z)
+        g1.addRow(lbl_a11y_2, self.tcmb_z)
         
         grp1.add_layout(g1)
         

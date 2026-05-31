@@ -219,19 +219,31 @@ class Modul2Sediment(QWidget):
         
         cmb_x = QComboBox(); cmb_y = QComboBox(); cmb_val = QComboBox()
         
-        g2.addRow(QLabel("Pilih Sheet:", styleSheet=label_style), cmb_sheet)
-        g2.addRow(QLabel("Baris Header:", styleSheet=label_style), spn_header)
+        lbl_a11y_1 = QLabel("Pilih Sheet:", styleSheet=label_style)
+        lbl_a11y_1.setBuddy(cmb_sheet)
+        g2.addRow(lbl_a11y_1, cmb_sheet)
+        lbl_a11y_2 = QLabel("Baris Header:", styleSheet=label_style)
+        lbl_a11y_2.setBuddy(spn_header)
+        g2.addRow(lbl_a11y_2, spn_header)
         
         line = QFrame(); line.setFrameShape(QFrame.Shape.HLine); line.setStyleSheet("background-color: #3A3F4A;")
         g2.addRow(line)
         
-        g2.addRow(QLabel("Kolom X (Lon):", styleSheet=label_style), cmb_x)
-        g2.addRow(QLabel("Kolom Y (Lat):", styleSheet=label_style), cmb_y)
-        g2.addRow(QLabel("Kolom Utama:", styleSheet=label_style), cmb_val)
+        lbl_a11y_3 = QLabel("Kolom X (Lon):", styleSheet=label_style)
+        lbl_a11y_3.setBuddy(cmb_x)
+        g2.addRow(lbl_a11y_3, cmb_x)
+        lbl_a11y_4 = QLabel("Kolom Y (Lat):", styleSheet=label_style)
+        lbl_a11y_4.setBuddy(cmb_y)
+        g2.addRow(lbl_a11y_4, cmb_y)
+        lbl_a11y_5 = QLabel("Kolom Utama:", styleSheet=label_style)
+        lbl_a11y_5.setBuddy(cmb_val)
+        g2.addRow(lbl_a11y_5, cmb_val)
         
         line2 = QFrame(); line2.setFrameShape(QFrame.Shape.HLine); line2.setStyleSheet("background-color: #3A3F4A;")
         g2.addRow(line2)
-        g2.addRow(QLabel("Metode:", styleSheet="color:#F7C159; font-weight:bold; font-size:12px; border:none;"), cmb_method)
+        lbl_a11y_6 = QLabel("Metode:", styleSheet="color:#F7C159; font-weight:bold; font-size:12px; border:none;")
+        lbl_a11y_6.setBuddy(cmb_method)
+        g2.addRow(lbl_a11y_6, cmb_method)
         
         chk_ks = QCheckBox("Ubah Otomatis D50 -> ks (2.5D)")
         chk_ks.setStyleSheet("color: #E2E8F0; font-weight: 600;")
