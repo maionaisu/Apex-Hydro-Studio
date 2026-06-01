@@ -1,0 +1,69 @@
+2026-06-01 11:00:05,450 [DEBUG] utils.config - [CONFIG] Inisialisasi direktori aman: models -> /app/Apex_FM_Model_Final
+2026-06-01 11:00:05,450 [DEBUG] utils.config - [CONFIG] Inisialisasi direktori aman: temp -> /app/Apex_Temp_Buffer
+2026-06-01 11:00:05,450 [INFO] utils.config - [CONFIG] Temporary buffer telah dibersihkan secara atomik.
+2026-06-01 11:00:08,178 [DEBUG] matplotlib - matplotlib data path: /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages/matplotlib/mpl-data
+2026-06-01 11:00:08,188 [DEBUG] matplotlib - CONFIGDIR=/home/jules/.config/matplotlib
+2026-06-01 11:00:08,190 [DEBUG] matplotlib - interactive is False
+2026-06-01 11:00:08,190 [DEBUG] matplotlib - platform is linux
+2026-06-01 11:00:08,255 [DEBUG] matplotlib - CACHEDIR=/home/jules/.cache/matplotlib
+2026-06-01 11:00:08,255 [DEBUG] matplotlib.font_manager - font search path [PosixPath('/home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf'), PosixPath('/home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/afm'), PosixPath('/home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/pdfcorefonts')]
+2026-06-01 11:00:09,381 [INFO] matplotlib.font_manager - Failed to extract font properties from /usr/share/fonts/truetype/noto/NotoColorEmoji.ttf: Can not load face (unknown file format; error code 0x2)
+2026-06-01 11:00:09,445 [INFO] matplotlib.font_manager - generated new fontManager
+2026-06-01 11:00:09,855 [DEBUG] matplotlib.pyplot - Loaded backend Agg version v2.2.
+2026-06-01 11:00:10,839 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-06-01 11:00:10,873 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-06-01 11:00:10,929 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-06-01 11:00:10,932 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-06-01 11:00:10,980 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-06-01 11:00:11,037 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-06-01 11:00:11,061 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-06-01 11:00:11,238 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-06-01 11:00:11,249 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-06-01 11:00:11,266 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-06-01 11:00:11,369 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-06-01 11:00:11,619 [INFO] hydrolib.core.dflowfm.ini.models - Dropped unset keys: []
+2026-06-01 11:00:12,450 [DEBUG] numcodecs - Registering codec 'zlib'
+2026-06-01 11:00:12,451 [DEBUG] numcodecs - Registering codec 'gzip'
+2026-06-01 11:00:12,451 [DEBUG] numcodecs - Registering codec 'bz2'
+2026-06-01 11:00:12,452 [DEBUG] numcodecs - Registering codec 'lzma'
+2026-06-01 11:00:12,453 [DEBUG] numcodecs - Registering codec 'blosc'
+2026-06-01 11:00:12,454 [DEBUG] numcodecs - Registering codec 'zstd'
+2026-06-01 11:00:12,455 [DEBUG] numcodecs - Registering codec 'lz4'
+2026-06-01 11:00:12,455 [DEBUG] numcodecs - Registering codec 'astype'
+2026-06-01 11:00:12,455 [DEBUG] numcodecs - Registering codec 'delta'
+2026-06-01 11:00:12,456 [DEBUG] numcodecs - Registering codec 'quantize'
+2026-06-01 11:00:12,457 [DEBUG] numcodecs - Registering codec 'fixedscaleoffset'
+2026-06-01 11:00:12,457 [DEBUG] numcodecs - Registering codec 'packbits'
+2026-06-01 11:00:12,458 [DEBUG] numcodecs - Registering codec 'categorize'
+2026-06-01 11:00:12,458 [DEBUG] numcodecs - Registering codec 'pickle'
+2026-06-01 11:00:12,458 [DEBUG] numcodecs - Registering codec 'base64'
+2026-06-01 11:00:12,460 [DEBUG] numcodecs - Registering codec 'shuffle'
+2026-06-01 11:00:12,460 [DEBUG] numcodecs - Registering codec 'bitround'
+2026-06-01 11:00:12,464 [DEBUG] numcodecs - Registering codec 'crc32'
+2026-06-01 11:00:12,465 [DEBUG] numcodecs - Registering codec 'adler32'
+2026-06-01 11:00:12,465 [DEBUG] numcodecs - Registering codec 'jenkins_lookup3'
+2026-06-01 11:00:12,465 [DEBUG] numcodecs - Registering codec 'json2'
+2026-06-01 11:00:12,466 [DEBUG] numcodecs - Registering codec 'vlen-utf8'
+2026-06-01 11:00:12,467 [DEBUG] numcodecs - Registering codec 'vlen-bytes'
+2026-06-01 11:00:12,467 [DEBUG] numcodecs - Registering codec 'vlen-array'
+2026-06-01 11:00:12,468 [DEBUG] numcodecs - Registering codec 'fletcher32'
+2026-06-01 11:00:12,470 [DEBUG] numcodecs - Registering codec 'crc32c'
+2026-06-01 11:00:12,815 [INFO] hydrolib.core.base.models - Loading data from pvstordt.his
+2026-06-01 11:00:12,816 [INFO] hydrolib.core.base.models - Loading data from pvflowdt.his
+2026-06-01 11:00:12,817 [INFO] hydrolib.core.base.models - Loading data from upflowdt.his
+2026-06-01 11:00:12,818 [INFO] hydrolib.core.base.models - Loading data from upgwlvdt.his
+2026-06-01 11:00:12,819 [INFO] hydrolib.core.base.models - Loading data from grnstrdt.his
+2026-06-01 11:00:12,820 [INFO] hydrolib.core.base.models - Loading data from grnflodt.his
+2026-06-01 11:00:12,821 [INFO] hydrolib.core.base.models - Loading data from ow_lvldt.his
+2026-06-01 11:00:12,822 [INFO] hydrolib.core.base.models - Loading data from ow_excdt.his
+2026-06-01 11:00:12,822 [INFO] hydrolib.core.base.models - Loading data from strflodt.his
+2026-06-01 11:00:12,823 [INFO] hydrolib.core.base.models - Loading data from bndflodt.his
+2026-06-01 11:00:12,824 [INFO] hydrolib.core.base.models - Loading data from plvstrdt.his
+2026-06-01 11:00:12,825 [INFO] hydrolib.core.base.models - Loading data from plvflodt.his
+2026-06-01 11:00:12,826 [INFO] hydrolib.core.base.models - Loading data from balansdt.his
+2026-06-01 11:00:12,827 [INFO] hydrolib.core.base.models - Loading data from cumbaldt.his
+2026-06-01 11:00:12,828 [INFO] hydrolib.core.base.models - Loading data from saltdt.his
+2026-06-01 11:00:12,903 [DEBUG] urllib3.connectionpool - Starting new HTTPS connection (1): raw.githubusercontent.com:443
+2026-06-01 11:00:12,984 [DEBUG] urllib3.connectionpool - https://raw.githubusercontent.com:443 "GET /IrishMarineInstitute/awesome-erddap/master/erddaps.json HTTP/1.1" 200 2399
+2026-06-01 11:00:14,181 [INFO] ApexMaster - Membangun arsitektur modul D-Flow FM & SWAN...
+2026-06-01 11:00:15,432 [INFO] ApexMaster - Apex Hydro-Studio siap untuk simulasi riset.
